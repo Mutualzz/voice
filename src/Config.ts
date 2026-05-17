@@ -1,23 +1,8 @@
 import os from "os";
-import type {
-    RouterRtpCodecCapability,
-    TransportListenInfo,
-    WorkerLogLevel,
-    WorkerLogTag,
-} from "mediasoup/types";
+import type { RouterRtpCodecCapability, TransportListenInfo, WorkerLogLevel, WorkerLogTag, } from "mediasoup/types";
 
 const numWorkers = Math.max(1, os.cpus().length - 1);
 const isProduction = process.env.NODE_ENV === "production";
-
-const getLocalIP = () => {
-    const ifaces = os.networkInterfaces();
-    const address = Object.values(ifaces)
-        .flatMap((iface) => iface ?? [])
-        .find((iface) => iface?.family === "IPv4" && !iface?.internal)?.address;
-
-    if (!address) throw new Error("Could not determine local IP");
-    return address;
-};
 
 if (isProduction && !process.env.ANNOUNCED_IP) {
     throw new Error(
@@ -26,14 +11,15 @@ if (isProduction && !process.env.ANNOUNCED_IP) {
     );
 }
 
-const announcedAddress = process.env.ANNOUNCED_IP ?? getLocalIP();
+const announcedAddress = process.env.ANNOUNCED_IP;
 
 const listenInfo = {
     ip: "0.0.0.0",
+    announcedIp: announcedAddress,
     announcedAddress,
     portRange: {
         min: 40000,
-        max: 49999,
+        max: 40100,
     },
     exposeInternalIp: false,
 } as TransportListenInfo;
