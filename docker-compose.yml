@@ -4,5 +4,14 @@ services:
             context: ../..
             dockerfile: apps/voice/Dockerfile
         env_file: .env
-        network_mode: host
+        ports:
+            - "3030:3030"
+            - "40000-49999:40000-49999/udp"
+            - "40000-49999:40000-49999/tcp"
+        networks:
+            - dokploy-network
         restart: unless-stopped
+
+networks:
+    dokploy-network:
+        external: true
