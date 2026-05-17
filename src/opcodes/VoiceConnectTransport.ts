@@ -1,7 +1,7 @@
-import type { Server } from "../Server.ts";
-import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types.ts";
+import type { Server } from "../Server";
+import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
 import type { DtlsParameters } from "mediasoup/types";
-import { Send } from "../util/Common.ts";
+import { Send } from "../util/Common";
 
 export default async function VoiceConnectTransport(
     server: Server,

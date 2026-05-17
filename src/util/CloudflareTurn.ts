@@ -1,4 +1,4 @@
-import { logger } from "../Logger.ts";
+import { logger } from "../Logger";
 
 export async function getCloudflareTurnCredentials(): Promise<
     RTCIceServer[] | null

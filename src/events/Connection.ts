@@ -1,10 +1,10 @@
 import type { IncomingMessage } from "http";
 import { type VoiceWebSocket } from "../util/WebSocket";
-import type { Server } from "apps/voice/src/index";
-import type { VoicePeer } from "apps/voice/src/types.ts";
-import Message from "apps/voice/src/events/Message.ts";
-import Close from "apps/voice/src/events/Close.ts";
-import { logger } from "apps/voice/src/Logger.ts";
+import type { Server } from "../Server";
+import type { VoicePeer } from "../types";
+import Message from "./Message";
+import { logger } from "../Logger";
+import Close from "./Close";
 
 export default async function Connection(
     this: Server,
@@ -13,6 +13,37 @@ export default async function Connection(
 ) {
     const pendingFrames: string[] = [];
     let ready = false;
+
+    socket.on("message", (raw) => {
+        const rawText =
+            typeof raw === "string"
+                ? raw
+                : Buffer.isBuffer(raw)
+                  ? raw.toString("utf8")
+                  : ArrayBuffer.isView(raw)
+                    ? Buffer.from(
+                          raw.buffer,
+                          raw.byteOffset,
+                          raw.byteLength,
+                      ).toString("utf8")
+                    : raw instanceof ArrayBuffer
+                      ? Buffer.from(raw).toString("utf8")
+                      : raw.toString();
+
+        if (!ready) {
+            pendingFrames.push(rawText);
+            return;
+        }
+
+        void Message(this, room, peer, rawText);
+    });
+
+    socket.on("error", (error) => {
+        logger.error(error);
+        try {
+            socket.close();
+        } catch {}
+    });
 
     const requestHost = request.headers.host ?? "localhost";
     const url = new URL(request.url ?? "/", `http://${requestHost}`);
@@ -51,46 +82,15 @@ export default async function Connection(
     room.peers.set(peer.userId, peer);
     this.activePeersByUserId.set(peer.userId, peer);
 
-    this.broadcastPeerJoined(room, peer.userId);
-
     socket.currentPeerId = peer.userId;
 
-    socket.on("message", (raw) => {
-        const rawText =
-            typeof raw === "string"
-                ? raw
-                : Buffer.isBuffer(raw)
-                  ? raw.toString("utf8")
-                  : ArrayBuffer.isView(raw)
-                    ? Buffer.from(
-                          raw.buffer,
-                          raw.byteOffset,
-                          raw.byteLength,
-                      ).toString("utf8")
-                    : raw instanceof ArrayBuffer
-                      ? Buffer.from(raw).toString("utf8")
-                      : raw.toString();
-
-        if (!ready) {
-            pendingFrames.push(rawText);
-            return;
-        }
-
-        void Message(this, room, peer, rawText);
-    });
-
     socket.on("close", () => Close(this, room, peer));
-
-    socket.on("error", (error) => {
-        logger.error(error);
-        try {
-            socket.close();
-        } catch {}
-    });
 
     ready = true;
     for (const frame of pendingFrames) {
         void Message(this, room, peer, frame);
     }
     pendingFrames.length = 0;
+
+    this.broadcastPeerJoined(room, peer.userId);
 }

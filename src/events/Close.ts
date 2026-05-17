@@ -1,5 +1,5 @@
-import type { Server } from "../Server.ts";
-import type { VoicePeer, VoiceRoom } from "../types.ts";
+import type { Server } from "../Server";
+import type { VoicePeer, VoiceRoom } from "../types";
 
 export default function Close(
     server: Server,

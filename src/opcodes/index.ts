@@ -8,10 +8,10 @@ import VoiceProduce from "./VoiceProduce";
 import VoiceConsume from "./VoiceConsume";
 import VoiceResumeConsumer from "./VoiceResumeConsumer";
 import VoiceLeave from "./VoiceLeave";
+import VoiceCloseProducer from "./VoiceCloseProducer";
 
 import type { Server } from "../Server";
 import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
-import VoiceCloseProducer from "apps/voice/src/opcodes/VoiceCloseProducer.ts";
 
 export type OPCodeHandler = (
     server: Server,

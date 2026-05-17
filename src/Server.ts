@@ -2,11 +2,10 @@ import { WebSocketServer } from "ws";
 import http, { type Server as HttpServer } from "http";
 import { createWorker, type types } from "mediasoup";
 import type { ServerPushEnvelope, VoicePeer, VoiceRoom } from "./types.ts";
-import { verifyVoiceToken } from "apps/server/src/util/Voice.ts";
+import { verifyVoiceToken } from "./util/Common";
 import { logger } from "./Logger.ts";
 import type { VoiceWebSocket } from "./util/WebSocket";
 import { type Snowflake, VoiceDispatchEvents } from "@mutualzz/types";
-import { closeDatabase } from "apps/server/src/database";
 import Connection from "./events/Connection";
 import config from "./Config.ts";
 
@@ -56,11 +55,7 @@ export class Server {
 
     async stop() {
         this.ws.clients.forEach((x) => x.close());
-        this.ws.close(() => {
-            this.server.close(() => {
-                closeDatabase();
-            });
-        });
+        this.ws.close();
     }
 
     async start() {

@@ -2,14 +2,14 @@
     "name": "@mutualzz/voice",
     "version": "2.0.0",
     "description": "",
-    "main": "index.js",
     "scripts": {
         "build": "pnpm typecheck && tsdown",
+        "build:dev": "tsdown",
         "db:push": "drizzle-kit push",
-        "dev": "cross-env NODE_ENV=development tsx watch --include \"./src/**/*\" -r dotenv/config ./src/bundle/index.ts",
         "lint": "eslint .",
         "prestart": "pnpm build",
         "start": "node -r dotenv/config ./dist/index.mjs",
+        "dev": "nodemon",
         "typecheck": "tsc --noEmit"
     },
     "keywords": [],
@@ -17,18 +17,21 @@
     "license": "MIT",
     "type": "module",
     "dependencies": {
-        "ws": "^8.20.0",
+        "@mutualzz/logger": "workspace:*",
+        "ioredis": "^5.10.1",
         "mediasoup": "^3.19.22",
-        "@mutualzz/logger": "workspace:*"
+        "ws": "^8.20.1"
     },
     "devDependencies": {
-        "tsdown": "^0.22.0",
         "@mutualzz/eslint-config": "workspace:*",
         "@mutualzz/types": "workspace:*",
         "@types/ws": "^8.18.1",
+        "cross-env": "10.1.0",
         "dotenv": "^17.4.2",
-        "tsx": "^4.21.0",
-        "cross-env": "10.1.0"
+        "nodemon": "^3.1.14",
+        "ts-node": "^10.9.2",
+        "tsconfig-paths": "^4.2.0",
+        "tsdown": "^0.22.0"
     },
     "private": true
 }

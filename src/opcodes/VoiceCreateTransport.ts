@@ -1,14 +1,14 @@
-import type { Server } from "../Server.ts";
+import type { Server } from "../Server";
 import type {
     ClientMessageEnvelope,
     TransportDirection,
     VoicePeer,
     VoiceRoom,
-} from "../types.ts";
-import { Send } from "../util/Common.ts";
-import config from "../Config.ts";
-import { getCloudflareTurnCredentials } from "apps/voice/src/util/CloudflareTurn.ts";
-import { logger } from "../Logger.ts";
+} from "../types";
+import { Send } from "../util/Common";
+import config from "../Config";
+import { getCloudflareTurnCredentials } from "../util/CloudflareTurn";
+import { logger } from "../Logger";
 
 function flattenIceServers(servers: RTCIceServer[]): RTCIceServer[] {
     return servers.flatMap((server) => {

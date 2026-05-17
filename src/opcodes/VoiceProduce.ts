@@ -1,8 +1,8 @@
-import type { Server } from "../Server.ts";
-import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types.ts";
-import { redis, verifyVoiceToken } from "apps/server/src/util";
-import { Send } from "apps/voice/src/util/Common.ts";
+import type { Server } from "../Server";
+import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
+import { Send, verifyVoiceToken } from "../util/Common";
 import { VoiceDispatchEvents } from "@mutualzz/types";
+import { redis } from "../util/Redis";
 
 export default async function VoiceProduce(
     server: Server,

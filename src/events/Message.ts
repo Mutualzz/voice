@@ -1,9 +1,9 @@
-import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types.ts";
-import type { Server } from "../Server.ts";
+import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
+import type { Server } from "../Server";
 import OPCodeHandlers from "../opcodes";
-import { logger } from "../Logger.ts";
-import { Send } from "../util/Common.ts";
-import { validatePeerSession } from "apps/voice/src/middleware/validatePeerSession.ts";
+import { logger } from "../Logger";
+import { Send } from "../util/Common";
+import { validatePeerSession } from "../middleware/validatePeerSession";
 
 export default async function Message(
     server: Server,

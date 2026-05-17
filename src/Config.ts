@@ -1,19 +1,21 @@
 import os from "os";
-import type { RouterRtpCodecCapability, TransportListenInfo, WorkerLogLevel, WorkerLogTag, } from "mediasoup/types";
+import type {
+    RouterRtpCodecCapability,
+    TransportListenInfo,
+    WorkerLogLevel,
+    WorkerLogTag,
+} from "mediasoup/types";
 
 const numWorkers = Math.max(1, os.cpus().length - 1);
 const isProduction = process.env.NODE_ENV === "production";
 
 const getLocalIP = () => {
-    if (!isProduction) return "127.0.0.1";
-
     const ifaces = os.networkInterfaces();
     const address = Object.values(ifaces)
         .flatMap((iface) => iface ?? [])
         .find((iface) => iface?.family === "IPv4" && !iface?.internal)?.address;
 
-    if (!address)
-        throw new Error("Could not determine public IP for announcedAddress");
+    if (!address) throw new Error("Could not determine local IP");
     return address;
 };
 
@@ -39,7 +41,7 @@ const listenInfo = {
 console.log("[Config] announcedAddress:", listenInfo.announcedAddress);
 
 export default {
-    listenIp: isProduction ? "0.0.0.0" : "localhost",
+    listenIp: "0.0.0.0",
     listenPort: process.env.VOICE_PORT
         ? parseInt(process.env.VOICE_PORT)
         : 3030,
