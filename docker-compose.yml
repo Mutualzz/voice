@@ -6,8 +6,8 @@ services:
         env_file: .env
         ports:
             - "3030:3030"
-            - "40000-49999:40000-49999/udp"
-            - "40000-49999:40000-49999/tcp"
+            - "40000-40100:40000-40100/udp"
+            - "40000-40100:40000-40100/tcp"
         networks:
             - dokploy-network
         restart: unless-stopped
