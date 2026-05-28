@@ -43,7 +43,7 @@ export class Server {
         const voiceSession = await verifyVoiceToken(token);
         if (!voiceSession) {
             logger.warn("verifyVoiceToken failed", {
-                tokenFingerprint: token?.slice(-8),
+                tokenFingerprint: token.slice(-8),
                 socketIp: (socket as any)._socket.remoteAddress,
             });
             socket.close(4001, "Invalid token");
@@ -51,6 +51,21 @@ export class Server {
         }
 
         return voiceSession;
+    }
+
+    kickPeerByUserId(
+        userId: Snowflake,
+        reasonCode = 4000,
+        reason = "Kicked from voice",
+    ) {
+        const peer = this.activePeersByUserId.get(userId);
+        if (!peer) return false;
+
+        const room = this.getRoom(peer.roomId);
+        if (!room) return false;
+
+        this.disconnectPeer(peer, reasonCode, reason);
+        return true;
     }
 
     async stop() {
@@ -91,7 +106,7 @@ export class Server {
             });
 
             worker.on("died", () => {
-                console.error("mediasoup worker died; exiting");
+                logger.error("mediasoup worker died; exiting");
                 process.exit(1);
             });
 
@@ -156,7 +171,9 @@ export class Server {
 
             try {
                 currentRoom.router.close();
-            } catch {}
+            } catch {
+                /* empty */
+            }
 
             this.rooms.delete(room.roomId);
             logger.debug(`Room ${room.roomId} closed`);
@@ -172,36 +189,48 @@ export class Server {
     disconnectPeer(peer: VoicePeer, reasonCode = 4000, reason = "Replaced") {
         try {
             peer.socket.close(reasonCode, reason);
-        } catch {}
+        } catch {
+            /* empty */
+        }
 
         try {
             const room = this.getRoom(peer.roomId);
             if (room) this.cleanupPeer(room, peer);
-        } catch {}
+        } catch {
+            /* empty */
+        }
     }
 
     cleanupPeer(room: VoiceRoom, peer: VoicePeer) {
         for (const consumer of peer.consumers.values()) {
             try {
                 consumer.close();
-            } catch {}
+            } catch {
+                /* empty */
+            }
         }
         peer.consumers.clear();
 
         for (const producer of peer.producers.values()) {
             try {
                 producer.close();
-            } catch {}
+            } catch {
+                /* empty */
+            }
         }
         peer.producers.clear();
 
         try {
             peer.sendTransport?.close();
-        } catch {}
+        } catch {
+            /* empty */
+        }
 
         try {
             peer.receiverTransport?.close();
-        } catch {}
+        } catch {
+            /* empty */
+        }
 
         room.peers.delete(peer.userId);
 
@@ -247,14 +276,18 @@ export class Server {
             if (exceptKey && userId.toString() === exceptKey) continue;
             try {
                 otherPeer.socket.send(payload);
-            } catch {}
+            } catch {
+                /* empty */
+            }
         }
     }
 
     push(peer: VoicePeer, message: ServerPushEnvelope) {
         try {
             peer.socket.send(JSON.stringify(message));
-        } catch {}
+        } catch {
+            /* empty */
+        }
     }
 
     broadcastPeerJoined(room: VoiceRoom, joinedUserId: Snowflake) {

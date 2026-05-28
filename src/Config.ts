@@ -1,5 +1,10 @@
 import os from "os";
-import type { RouterRtpCodecCapability, TransportListenInfo, WorkerLogLevel, WorkerLogTag, } from "mediasoup/types";
+import type {
+    RouterRtpCodecCapability,
+    TransportListenInfo,
+    WorkerLogLevel,
+    WorkerLogTag,
+} from "mediasoup/types";
 
 const numWorkers = Math.max(1, os.cpus().length - 1);
 const isProduction = process.env.NODE_ENV === "production";
@@ -11,7 +16,7 @@ if (isProduction && !process.env.ANNOUNCED_IP) {
     );
 }
 
-const announcedAddress = process.env.ANNOUNCED_IP;
+const announcedAddress = process.env.ANNOUNCED_IP ?? "127.0.0.1";
 
 const listenInfo = {
     ip: "0.0.0.0",
@@ -26,11 +31,13 @@ const listenInfo = {
 
 console.log("[Config] announcedAddress:", listenInfo.announcedAddress);
 
+const DEFAULT_PORT = 3030;
+
 export default {
     listenIp: "0.0.0.0",
     listenPort: process.env.VOICE_PORT
         ? parseInt(process.env.VOICE_PORT)
-        : 3030,
+        : DEFAULT_PORT,
 
     mediasoup: {
         numWorkers,
