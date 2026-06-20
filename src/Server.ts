@@ -246,12 +246,17 @@ export class Server {
 
             for (const producer of otherPeer.producers.values()) {
                 try {
+                    const mediaKind =
+                        (producer.appData?.mediaKind as string | undefined) ??
+                        (producer.kind === "video" ? "camera" : "audio");
+
                     this.push(peer, {
                         op: VoiceDispatchEvents.VoiceNewProducer,
                         data: {
                             userId: otherUserId,
                             producerId: producer.id,
                             kind: producer.kind,
+                            mediaKind,
                         },
                     });
                 } catch (err) {
