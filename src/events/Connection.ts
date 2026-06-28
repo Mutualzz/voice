@@ -84,7 +84,25 @@ export default async function Connection(
 
     socket.currentPeerId = peer.userId;
 
-    socket.on("close", () => Close(this, room, peer));
+    (socket as any).isAlive = true;
+    socket.on("pong", () => {
+        (socket as any).isAlive = true;
+    });
+
+    const heartbeat = setInterval(() => {
+        if (!(socket as any).isAlive) {
+            clearInterval(heartbeat);
+            try { socket.terminate(); } catch {}
+            return;
+        }
+        (socket as any).isAlive = false;
+        try { socket.ping(); } catch {}
+    }, 25_000);
+
+    socket.on("close", () => {
+        clearInterval(heartbeat);
+        Close(this, room, peer);
+    });
 
     ready = true;
     for (const frame of pendingFrames) {

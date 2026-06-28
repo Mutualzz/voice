@@ -65,7 +65,7 @@ export const createVoiceSession = async (
     userId: string | bigint,
     sessionId: string,
     roomId: string,
-    ttlSeconds = 300,
+    ttlSeconds = 28_800, // 8 hours
 ) => {
     const normalizedUserId = userId.toString();
     const tokenId = crypto.randomUUID();

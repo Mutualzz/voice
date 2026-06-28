@@ -64,8 +64,11 @@ export default async function VoiceProduce(
   if (!state.channelId)
     throw server.error("NOT_IN_VOICE", "User is not in a voice channel");
 
-  const shouldStartPaused =
-    kind === "audio" && Boolean(state.selfMute || state.spaceMute);
+  // Refresh token TTL so long-running sessions don't expire mid-session
+  await Promise.all([
+    redis.expire(`voice:sessions:${voiceToken}`, 28_800),
+    redis.expire(`voice:currentToken:${peer.userId}`, 28_800),
+  ]).catch(() => {});
 
   const producer = await peer.sendTransport.produce({
     kind,
@@ -77,14 +80,6 @@ export default async function VoiceProduce(
         (kind === "video" ? "camera" : "audio"),
     },
   });
-
-  if (shouldStartPaused) {
-    try {
-      await producer.pause();
-    } catch {
-      //empty
-    }
-  }
 
   peer.producers.set(producer.id, producer);
 
