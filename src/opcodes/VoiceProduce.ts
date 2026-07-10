@@ -68,7 +68,7 @@ export default async function VoiceProduce(
   await Promise.all([
     redis.expire(`voice:sessions:${voiceToken}`, 28_800),
     redis.expire(`voice:currentToken:${peer.userId}`, 28_800),
-  ]).catch(() => {});
+  ]);
 
   const producer = await peer.sendTransport.produce({
     kind,

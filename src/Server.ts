@@ -10,308 +10,304 @@ import Connection from "./events/Connection";
 import config from "./Config.ts";
 
 export class Server {
-    readonly rooms = new Map<string, VoiceRoom>(); // roomId -> VoiceRoom
-    readonly workers: types.Worker[] = [];
-    nextWorkerIndex = 0;
-    readonly activePeersByUserId = new Map<Snowflake, VoicePeer>();
-    private readonly server: HttpServer;
-    private readonly ws: WebSocketServer;
-    private workersReady = false;
-    private readonly roomCloseTimers = new Map<
-        string,
-        ReturnType<typeof setTimeout>
-    >();
+  readonly rooms = new Map<string, VoiceRoom>(); // roomId -> VoiceRoom
+  readonly workers: types.Worker[] = [];
+  nextWorkerIndex = 0;
+  readonly activePeersByUserId = new Map<Snowflake, VoicePeer>();
+  private readonly server: HttpServer;
+  private readonly ws: WebSocketServer;
+  private workersReady = false;
+  private readonly roomCloseTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
-    constructor() {
-        this.server = http.createServer();
-        this.ws = new WebSocketServer({ server: this.server });
+  constructor() {
+    this.server = http.createServer();
+    this.ws = new WebSocketServer({ server: this.server });
 
-        this.ws.on("connection", (socket, request) => {
-            return Connection.call(this, socket as VoiceWebSocket, request);
-        });
-        this.ws.on("error", (err) => {
-            logger.error(`WebSocket error: ${err}`);
-        });
+    this.ws.on("connection", (socket, request) => {
+      return Connection.call(this, socket as VoiceWebSocket, request);
+    });
+    this.ws.on("error", (err) => {
+      logger.error(`WebSocket error: ${err}`);
+    });
+  }
+
+  async verifyVoiceToken(socket: VoiceWebSocket, token: string | null) {
+    if (!token) {
+      socket.close(4001, "Missing token");
+      return null;
     }
 
-    async verifyVoiceToken(socket: VoiceWebSocket, token: string | null) {
-        if (!token) {
-            socket.close(4001, "Missing token");
-            return null;
-        }
-
-        const voiceSession = await verifyVoiceToken(token);
-        if (!voiceSession) {
-            logger.warn("verifyVoiceToken failed", {
-                tokenFingerprint: token.slice(-8),
-                socketIp: (socket as any)._socket.remoteAddress,
-            });
-            socket.close(4001, "Invalid token");
-            return null;
-        }
-
-        return voiceSession;
+    const voiceSession = await verifyVoiceToken(token);
+    if (!voiceSession) {
+      logger.warn("verifyVoiceToken failed", {
+        tokenFingerprint: token.slice(-8),
+        socketIp: (socket as any)._socket.remoteAddress,
+      });
+      socket.close(4001, "Invalid token");
+      return null;
     }
 
-    kickPeerByUserId(
-        userId: Snowflake,
-        reasonCode = 4000,
-        reason = "Kicked from voice",
-    ) {
-        const peer = this.activePeersByUserId.get(userId);
-        if (!peer) return false;
+    return voiceSession;
+  }
 
-        const room = this.getRoom(peer.roomId);
-        if (!room) return false;
+  kickPeerByUserId(
+    userId: Snowflake,
+    reasonCode = 4000,
+    reason = "Kicked from voice",
+  ) {
+    const peer = this.activePeersByUserId.get(userId);
+    if (!peer) return false;
 
-        this.disconnectPeer(peer, reasonCode, reason);
-        return true;
+    const room = this.getRoom(peer.roomId);
+    if (!room) return false;
+
+    this.disconnectPeer(peer, reasonCode, reason);
+    return true;
+  }
+
+  async stop() {
+    this.ws.clients.forEach((x) => x.close());
+    this.ws.close();
+  }
+
+  async start() {
+    if (!this.workersReady) {
+      await this.createWorkers();
+      this.workersReady = true;
     }
 
-    async stop() {
-        this.ws.clients.forEach((x) => x.close());
-        this.ws.close();
+    if (this.server.listening) return;
+
+    await new Promise<void>((resolve, reject) => {
+      this.server.once("error", reject);
+      this.server.listen(config.listenPort, config.listenIp, () => resolve());
+    });
+
+    logger.info(`Online on ${config.listenIp}:${config.listenPort}`);
+  }
+
+  async createWorkers() {
+    let numWorkers = config.mediasoup.numWorkers;
+
+    if (numWorkers === 0) {
+      logger.warn("Configured 0 mediasoup workers; defaulting to 1.");
+      numWorkers += 1;
     }
 
-    async start() {
-        if (!this.workersReady) {
-            await this.createWorkers();
-            this.workersReady = true;
-        }
+    for (let workerIndex = 0; workerIndex < numWorkers; workerIndex++) {
+      const worker = await createWorker({
+        logLevel: config.mediasoup.worker.logLevel,
+        logTags: config.mediasoup.worker.logTags,
+      });
 
-        if (this.server.listening) return;
+      worker.on("died", () => {
+        logger.error("mediasoup worker died; exiting");
+        process.exit(1);
+      });
 
-        await new Promise<void>((resolve, reject) => {
-            this.server.once("error", reject);
-            this.server.listen(config.listenPort, config.listenIp, () =>
-                resolve(),
-            );
-        });
-
-        logger.info(`Online on ${config.listenIp}:${config.listenPort}`);
+      this.workers.push(worker);
     }
 
-    async createWorkers() {
-        let numWorkers = config.mediasoup.numWorkers;
+    logger.debug(`Workers created: ${this.workers.length}`);
+  }
 
-        if (numWorkers === 0) {
-            logger.warn("Configured 0 mediasoup workers; defaulting to 1.");
-            numWorkers += 1;
-        }
+  getNextWorker(): {
+    worker: types.Worker;
+    workerIndex: number;
+  } {
+    if (this.workers.length === 0)
+      throw new Error("No mediasoup workers initialized. Call start() first.");
 
-        for (let workerIndex = 0; workerIndex < numWorkers; workerIndex++) {
-            const worker = await createWorker({
-                logLevel: config.mediasoup.worker.logLevel,
-                logTags: config.mediasoup.worker.logTags,
-            });
+    const workerIndex = this.nextWorkerIndex++ % this.workers.length;
+    return { worker: this.workers[workerIndex], workerIndex };
+  }
 
-            worker.on("died", () => {
-                logger.error("mediasoup worker died; exiting");
-                process.exit(1);
-            });
-
-            this.workers.push(worker);
-        }
-
-        logger.debug(`Workers created: ${this.workers.length}`);
+  async getOrCreateRoom(roomId: string) {
+    const pendingClose = this.roomCloseTimers.get(roomId);
+    if (pendingClose) {
+      clearTimeout(pendingClose);
+      this.roomCloseTimers.delete(roomId);
     }
 
-    getNextWorker(): {
-        worker: types.Worker;
-        workerIndex: number;
-    } {
-        if (this.workers.length === 0)
-            throw new Error(
-                "No mediasoup workers initialized. Call start() first.",
-            );
+    const existing = this.rooms.get(roomId);
+    if (existing) return existing;
 
-        const workerIndex = this.nextWorkerIndex++ % this.workers.length;
-        return { worker: this.workers[workerIndex], workerIndex };
+    const { worker, workerIndex } = this.getNextWorker();
+    const mediaCodecs = config.router.mediaCodecs;
+
+    const router = await worker.createRouter({
+      mediaCodecs,
+    });
+
+    const room: VoiceRoom = {
+      roomId,
+      router,
+      peers: new Map(),
+      workerIndex,
+    };
+
+    this.rooms.set(roomId, room);
+
+    return room;
+  }
+
+  closeRoom(room: VoiceRoom) {
+    const existingTimer = this.roomCloseTimers.get(room.roomId);
+    if (existingTimer) return;
+
+    const timer = setTimeout(() => {
+      this.roomCloseTimers.delete(room.roomId);
+
+      const currentRoom = this.rooms.get(room.roomId);
+      if (!currentRoom) return;
+      if (currentRoom.peers.size > 0) return;
+
+      try {
+        currentRoom.router.close();
+      } catch {
+        /* empty */
+      }
+
+      this.rooms.delete(room.roomId);
+      logger.debug(`Room ${room.roomId} closed`);
+    }, config.roomCloseDelayMs);
+
+    this.roomCloseTimers.set(room.roomId, timer);
+  }
+
+  getRoom(roomId: string) {
+    return this.rooms.get(roomId);
+  }
+
+  disconnectPeer(peer: VoicePeer, reasonCode = 4000, reason = "Replaced") {
+    try {
+      peer.socket.close(reasonCode, reason);
+    } catch {
+      /* empty */
     }
 
-    async getOrCreateRoom(roomId: string) {
-        const pendingClose = this.roomCloseTimers.get(roomId);
-        if (pendingClose) {
-            clearTimeout(pendingClose);
-            this.roomCloseTimers.delete(roomId);
-        }
+    try {
+      const room = this.getRoom(peer.roomId);
+      if (room) this.cleanupPeer(room, peer);
+    } catch {
+      /* empty */
+    }
+  }
 
-        const existing = this.rooms.get(roomId);
-        if (existing) return existing;
+  cleanupPeer(room: VoiceRoom, peer: VoicePeer) {
+    for (const consumer of peer.consumers.values()) {
+      try {
+        consumer.close();
+      } catch {
+        /* empty */
+      }
+    }
+    peer.consumers.clear();
 
-        const { worker, workerIndex } = this.getNextWorker();
-        const mediaCodecs = config.router.mediaCodecs;
+    for (const producer of peer.producers.values()) {
+      try {
+        producer.close();
+      } catch {
+        /* empty */
+      }
+    }
+    peer.producers.clear();
 
-        const router = await worker.createRouter({
-            mediaCodecs,
-        });
-
-        const room: VoiceRoom = {
-            roomId,
-            router,
-            peers: new Map(),
-            workerIndex,
-        };
-
-        this.rooms.set(roomId, room);
-
-        return room;
+    try {
+      peer.sendTransport?.close();
+    } catch {
+      /* empty */
     }
 
-    closeRoom(room: VoiceRoom) {
-        const existingTimer = this.roomCloseTimers.get(room.roomId);
-        if (existingTimer) return;
-
-        const timer = setTimeout(() => {
-            this.roomCloseTimers.delete(room.roomId);
-
-            const currentRoom = this.rooms.get(room.roomId);
-            if (!currentRoom) return;
-            if (currentRoom.peers.size > 0) return;
-
-            try {
-                currentRoom.router.close();
-            } catch {
-                /* empty */
-            }
-
-            this.rooms.delete(room.roomId);
-            logger.debug(`Room ${room.roomId} closed`);
-        }, config.roomCloseDelayMs);
-
-        this.roomCloseTimers.set(room.roomId, timer);
+    try {
+      peer.receiverTransport?.close();
+    } catch {
+      /* empty */
     }
 
-    getRoom(roomId: string) {
-        return this.rooms.get(roomId);
-    }
+    room.peers.delete(peer.userId);
 
-    disconnectPeer(peer: VoicePeer, reasonCode = 4000, reason = "Replaced") {
+    const active = this.activePeersByUserId.get(peer.userId);
+    if (active === peer) this.activePeersByUserId.delete(peer.userId);
+
+    this.closeRoom(room);
+  }
+
+  pushExistingProducers(room: VoiceRoom, peer: VoicePeer) {
+    for (const [otherUserId, otherPeer] of room.peers) {
+      if (otherUserId === peer.userId) continue;
+
+      for (const producer of otherPeer.producers.values()) {
         try {
-            peer.socket.close(reasonCode, reason);
-        } catch {
-            /* empty */
-        }
+          const mediaKind =
+            (producer.appData?.mediaKind as string | undefined) ??
+            (producer.kind === "video" ? "camera" : "audio");
 
-        try {
-            const room = this.getRoom(peer.roomId);
-            if (room) this.cleanupPeer(room, peer);
-        } catch {
-            /* empty */
+          this.push(peer, {
+            op: VoiceDispatchEvents.VoiceNewProducer,
+            data: {
+              userId: otherUserId,
+              producerId: producer.id,
+              kind: producer.kind,
+              mediaKind,
+            },
+          });
+        } catch (err) {
+          logger.warn(
+            `pushExistingProducers: failed to push producer ${producer.id} to peer ${peer.userId}`,
+            { err },
+          );
         }
+      }
     }
+  }
 
-    cleanupPeer(room: VoiceRoom, peer: VoicePeer) {
-        for (const consumer of peer.consumers.values()) {
-            try {
-                consumer.close();
-            } catch {
-                /* empty */
-            }
-        }
-        peer.consumers.clear();
+  broadcast(
+    room: VoiceRoom,
+    message: ServerPushEnvelope,
+    exceptUserId?: Snowflake,
+  ) {
+    const payload = JSON.stringify(message);
+    const exceptKey = exceptUserId != null ? exceptUserId.toString() : null;
 
-        for (const producer of peer.producers.values()) {
-            try {
-                producer.close();
-            } catch {
-                /* empty */
-            }
-        }
-        peer.producers.clear();
-
-        try {
-            peer.sendTransport?.close();
-        } catch {
-            /* empty */
-        }
-
-        try {
-            peer.receiverTransport?.close();
-        } catch {
-            /* empty */
-        }
-
-        room.peers.delete(peer.userId);
-
-        const active = this.activePeersByUserId.get(peer.userId);
-        if (active === peer) this.activePeersByUserId.delete(peer.userId);
-
-        this.closeRoom(room);
+    for (const [userId, otherPeer] of room.peers) {
+      if (exceptKey && userId.toString() === exceptKey) continue;
+      try {
+        otherPeer.socket.send(payload);
+      } catch {
+        /* empty */
+      }
     }
+  }
 
-    pushExistingProducers(room: VoiceRoom, peer: VoicePeer) {
-        for (const [otherUserId, otherPeer] of room.peers) {
-            if (otherUserId === peer.userId) continue;
-
-            for (const producer of otherPeer.producers.values()) {
-                try {
-                    const mediaKind =
-                        (producer.appData?.mediaKind as string | undefined) ??
-                        (producer.kind === "video" ? "camera" : "audio");
-
-                    this.push(peer, {
-                        op: VoiceDispatchEvents.VoiceNewProducer,
-                        data: {
-                            userId: otherUserId,
-                            producerId: producer.id,
-                            kind: producer.kind,
-                            mediaKind,
-                        },
-                    });
-                } catch (err) {
-                    logger.warn(
-                        `pushExistingProducers: failed to push producer ${producer.id} to peer ${peer.userId}`,
-                        { err },
-                    );
-                }
-            }
-        }
+  push(peer: VoicePeer, message: ServerPushEnvelope) {
+    try {
+      peer.socket.send(JSON.stringify(message));
+    } catch {
+      /* empty */
     }
+  }
 
-    broadcast(
-        room: VoiceRoom,
-        message: ServerPushEnvelope,
-        exceptUserId?: Snowflake,
-    ) {
-        const payload = JSON.stringify(message);
-        const exceptKey = exceptUserId != null ? exceptUserId.toString() : null;
+  broadcastPeerJoined(room: VoiceRoom, joinedUserId: Snowflake) {
+    this.broadcast(room, {
+      op: VoiceDispatchEvents.VoicePeerJoined,
+      data: { userId: joinedUserId },
+    });
+  }
 
-        for (const [userId, otherPeer] of room.peers) {
-            if (exceptKey && userId.toString() === exceptKey) continue;
-            try {
-                otherPeer.socket.send(payload);
-            } catch {
-                /* empty */
-            }
-        }
-    }
+  broadcastPeerLeft(room: VoiceRoom, leftUserId: Snowflake) {
+    this.broadcast(room, {
+      op: VoiceDispatchEvents.VoicePeerLeft,
+      data: { userId: leftUserId },
+    });
+  }
 
-    push(peer: VoicePeer, message: ServerPushEnvelope) {
-        try {
-            peer.socket.send(JSON.stringify(message));
-        } catch {
-            /* empty */
-        }
-    }
-
-    broadcastPeerJoined(room: VoiceRoom, joinedUserId: Snowflake) {
-        this.broadcast(room, {
-            op: VoiceDispatchEvents.VoicePeerJoined,
-            data: { userId: joinedUserId },
-        });
-    }
-
-    broadcastPeerLeft(room: VoiceRoom, leftUserId: Snowflake) {
-        this.broadcast(room, {
-            op: VoiceDispatchEvents.VoicePeerLeft,
-            data: { userId: leftUserId },
-        });
-    }
-
-    error(code: string, message: string) {
-        const error = new Error(message) as any;
-        error.code = code;
-        return error;
-    }
+  error(code: string, message: string) {
+    const error = new Error(message) as any;
+    error.code = code;
+    return error;
+  }
 }

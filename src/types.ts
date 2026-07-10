@@ -1,76 +1,76 @@
 import type { Snowflake, VoiceOpcode, VoiceState } from "@mutualzz/types";
-import WebSocket from "ws";
-import * as mediasoup from "mediasoup";
+import type WebSocket from "ws";
+import type * as mediasoup from "mediasoup";
 import type {
-    IceCandidate as FuckICECandidate,
-    IceParameters as FuckICEParameters,
+  IceCandidate as FuckICECandidate,
+  IceParameters as FuckICEParameters,
 } from "mediasoup/types";
 
 export interface VoiceTokenClaims {
-    userId: Snowflake;
-    sessionId: string;
-    roomId: string; // `${spaceId}:${channelId}`
-    exp: number;
+  userId: Snowflake;
+  sessionId: string;
+  roomId: string; // `${spaceId}:${channelId}`
+  exp: number;
 }
 
 export interface ClientMessageEnvelope {
-    id: string;
-    op: VoiceOpcode;
-    data?: any;
+  id: string;
+  op: VoiceOpcode;
+  data?: any;
 }
 
 export interface ServerResponseEnvelope {
-    id: string;
-    ok: boolean;
-    data?: any;
-    error?: { code: string; message: string };
+  id: string;
+  ok: boolean;
+  data?: any;
+  error?: { code: string; message: string };
 }
 
 export interface ServerPushEnvelope {
-    op: string;
-    data: any;
+  op: string;
+  data: any;
 }
 
 export interface VoiceServerUpdatePayload {
-    roomId: string;
-    voiceEndpoint: string;
-    voiceToken: string;
+  roomId: string;
+  voiceEndpoint: string;
+  voiceToken: string;
 }
 
 export interface VoiceStateSyncPayload {
-    channelId: Snowflake;
-    states: VoiceState[];
+  channelId: Snowflake;
+  states: VoiceState[];
 }
 
 export interface VoicePeer {
-    userId: Snowflake;
-    sessionId: string;
-    roomId: string;
-    voiceToken?: string | null;
+  userId: Snowflake;
+  sessionId: string;
+  roomId: string;
+  voiceToken?: string | null;
 
-    socket: WebSocket;
+  socket: WebSocket;
 
-    rtpCapabilities?: mediasoup.types.RtpCapabilities;
+  rtpCapabilities?: mediasoup.types.RtpCapabilities;
 
-    sendTransport?: mediasoup.types.WebRtcTransport;
-    receiverTransport?: mediasoup.types.WebRtcTransport;
+  sendTransport?: mediasoup.types.WebRtcTransport;
+  receiverTransport?: mediasoup.types.WebRtcTransport;
 
-    producers: Map<string, mediasoup.types.Producer>;
-    consumers: Map<string, mediasoup.types.Consumer>;
+  producers: Map<string, mediasoup.types.Producer>;
+  consumers: Map<string, mediasoup.types.Consumer>;
 }
 
 export interface VoiceRoom {
-    roomId: string;
-    router: mediasoup.types.Router;
-    peers: Map<Snowflake, VoicePeer>; // userId -> VoicePeer
-    workerIndex: number;
+  roomId: string;
+  router: mediasoup.types.Router;
+  peers: Map<Snowflake, VoicePeer>; // userId -> VoicePeer
+  workerIndex: number;
 }
 
 export interface CreateTransportResponse {
-    id: string;
-    iceParameters: FuckICEParameters;
-    iceCandidates: FuckICECandidate[];
-    dtlsParameters: mediasoup.types.DtlsParameters;
+  id: string;
+  iceParameters: FuckICEParameters;
+  iceCandidates: FuckICECandidate[];
+  dtlsParameters: mediasoup.types.DtlsParameters;
 }
 
 export type TransportDirection = "send" | "receive";

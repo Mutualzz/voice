@@ -1,75 +1,77 @@
 import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
 import type { Server } from "../Server";
-import OPCodeHandlers from "../opcodes";
+import OPCodeHandlers, { type OPCodeHandler } from "../opcodes";
 import { logger } from "../Logger";
 import { Send } from "../util/Common";
 import { validatePeerSession } from "../middleware/validatePeerSession";
 
 export default async function Message(
-    server: Server,
-    room: VoiceRoom,
-    peer: VoicePeer,
-    rawText: string,
+  server: Server,
+  room: VoiceRoom,
+  peer: VoicePeer,
+  rawText: string,
 ) {
-    if (!validatePeerSession(server, peer)) {
-        try {
-            peer.socket.close(4000, "Session superseded");
-        } catch {}
-
-        return;
-    }
-
-    let envelope: ClientMessageEnvelope;
-
+  if (!validatePeerSession(server, peer)) {
     try {
-        envelope = JSON.parse(rawText);
-    } catch (err) {
-        logger.error("invalid JSON", err);
-        return;
+      peer.socket.close(4000, "Session superseded");
+    } catch {
+      // Ignore errors
     }
 
-    // logger.debug("<-", {
-    //     op: envelope.op,
-    //     id: envelope.id,
-    //     userId: peer.userId,
-    //     roomId: peer.roomId,
-    // });
+    return;
+  }
 
-    const handler = OPCodeHandlers[envelope.op];
-    if (!handler) {
-        logger.error(`Unknown Opcode: ${envelope.op}`);
-        Send(
-            {
-                ok: false,
-                error: { code: "UNKNOWN_OPCODE", message: "Unknown opcode" },
-            },
-            peer,
-            envelope,
-        );
-        return;
-    }
+  let envelope: ClientMessageEnvelope;
 
-    try {
-        await handler(server, room, peer, envelope);
-    } catch (error: any) {
-        logger.error("Handler error", {
-            op: envelope.op,
-            id: envelope.id,
-            message: error?.message,
-            stack: error?.stack,
-            code: error?.code,
-        });
+  try {
+    envelope = JSON.parse(rawText);
+  } catch (err) {
+    logger.error("invalid JSON", err);
+    return;
+  }
 
-        Send(
-            {
-                ok: false,
-                error: {
-                    code: error?.code ?? "INTERNAL",
-                    message: error?.message ?? "Internal",
-                },
-            },
-            peer,
-            envelope,
-        );
-    }
+  logger.debug("<-", {
+    op: envelope.op,
+    id: envelope.id,
+    userId: peer.userId,
+    roomId: peer.roomId,
+  });
+
+  const handler = OPCodeHandlers[envelope.op] as OPCodeHandler | null;
+  if (!handler) {
+    logger.error(`Unknown Opcode: ${envelope.op}`);
+    Send(
+      {
+        ok: false,
+        error: { code: "UNKNOWN_OPCODE", message: "Unknown opcode" },
+      },
+      peer,
+      envelope,
+    );
+    return;
+  }
+
+  try {
+    await handler(server, room, peer, envelope);
+  } catch (error: any) {
+    logger.error("Handler error", {
+      op: envelope.op,
+      id: envelope.id,
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code,
+    });
+
+    Send(
+      {
+        ok: false,
+        error: {
+          code: error?.code ?? "INTERNAL",
+          message: error?.message ?? "Internal",
+        },
+      },
+      peer,
+      envelope,
+    );
+  }
 }
