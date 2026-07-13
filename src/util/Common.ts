@@ -7,6 +7,8 @@ import crypto from "crypto";
 import { Snowflake } from "./Snowflake";
 import { redis } from "./Redis";
 
+export const VOICE_SESSION_TTL_SECONDS = 28_800;
+
 export const Send = (
   payload: Omit<ServerResponseEnvelope, "id">,
   peer: VoicePeer,
@@ -27,6 +29,21 @@ export const base64UrlEncode = (input: Buffer | string) =>
     .replace(/\+/g, "-")
     .replace(/\//g, "_");
 
+const getVoiceSecret = () => {
+  const secret = process.env.SECRET;
+  if (!secret) {
+    throw new Error("SECRET env var is required for voice tokens");
+  }
+  return secret;
+};
+
+const signaturesMatch = (expected: string, actual: string) => {
+  const expectedBuf = Buffer.from(expected);
+  const actualBuf = Buffer.from(actual);
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
+};
+
 export const generateVoiceToken = (
   userId: string,
   sessionId: string,
@@ -43,10 +60,7 @@ export const generateVoiceToken = (
 
   const data = `${base64UrlUserId}.${base64UrlSessionId}.${base64UrlRoomId}.${base64UrlTokenId}.${base64UrlTimestamp}`;
   const signature = base64UrlEncode(
-    crypto
-      .createHmac("sha256", process.env.SECRET as string)
-      .update(data)
-      .digest(),
+    crypto.createHmac("sha256", getVoiceSecret()).update(data).digest(),
   );
 
   return `${data}.${signature}`;
@@ -65,17 +79,17 @@ export const createVoiceSession = async (
   userId: string | bigint,
   sessionId: string,
   roomId: string,
-  ttlSeconds = 28_800, // 8 hours
+  ttlSeconds = VOICE_SESSION_TTL_SECONDS,
+  tokenId?: string,
 ) => {
   const normalizedUserId = userId.toString();
-  const tokenId = crypto.randomUUID();
 
   const voiceSession: VoiceSession = {
     sessionId,
     userId: normalizedUserId,
     roomId,
     createdAt: Date.now(),
-    tokenId,
+    tokenId: tokenId ?? crypto.randomUUID(),
   };
 
   await redis.set(
@@ -119,15 +133,17 @@ export const verifyVoiceToken = async (token: string) => {
     return null;
   }
 
-  const data = `${base64UrlUserId}.${base64UrlSessionId}.${base64UrlRoomId}.${base64UrlTokenId}.${base64UrlTimestamp}`;
-  const expectedSignature = base64UrlEncode(
-    crypto
-      .createHmac("sha256", process.env.SECRET as string)
-      .update(data)
-      .digest(),
-  );
+  let expectedSignature: string;
+  try {
+    const data = `${base64UrlUserId}.${base64UrlSessionId}.${base64UrlRoomId}.${base64UrlTokenId}.${base64UrlTimestamp}`;
+    expectedSignature = base64UrlEncode(
+      crypto.createHmac("sha256", getVoiceSecret()).update(data).digest(),
+    );
+  } catch {
+    return null;
+  }
 
-  if (expectedSignature !== signature) return null;
+  if (!signaturesMatch(expectedSignature, signature)) return null;
 
   const raw = await redis.get(`voice:sessions:${token}`);
   if (!raw) return null;

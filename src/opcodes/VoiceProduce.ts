@@ -1,6 +1,6 @@
 import type { Server } from "../Server";
 import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
-import { Send, verifyVoiceToken } from "../util/Common";
+import { Send, verifyVoiceToken, VOICE_SESSION_TTL_SECONDS } from "../util/Common";
 import { VoiceDispatchEvents } from "@mutualzz/types";
 import { redis } from "../util/Redis";
 
@@ -64,10 +64,18 @@ export default async function VoiceProduce(
   if (!state.channelId)
     throw server.error("NOT_IN_VOICE", "User is not in a voice channel");
 
-  // Refresh token TTL so long-running sessions don't expire mid-session
+  if (kind === "audio") {
+    if (state.spaceMute === true || state.spaceDeaf === true) {
+      throw server.error(
+        "VOICE_MUTED",
+        "User is server-muted or server-deafened",
+      );
+    }
+  }
+
   await Promise.all([
-    redis.expire(`voice:sessions:${voiceToken}`, 28_800),
-    redis.expire(`voice:currentToken:${peer.userId}`, 28_800),
+    redis.expire(`voice:sessions:${voiceToken}`, VOICE_SESSION_TTL_SECONDS),
+    redis.expire(`voice:currentToken:${peer.userId}`, VOICE_SESSION_TTL_SECONDS),
   ]);
 
   const producer = await peer.sendTransport.produce({
@@ -82,6 +90,21 @@ export default async function VoiceProduce(
   });
 
   peer.producers.set(producer.id, producer);
+
+  const publishClosed = () => {
+    if (!peer.producers.delete(producer.id)) return;
+    server.broadcast(
+      room,
+      {
+        op: VoiceDispatchEvents.VoiceProducerClosed,
+        data: { producerId: producer.id },
+      },
+      peer.userId,
+    );
+  };
+
+  producer.on("close", publishClosed);
+  producer.on("transportclose", publishClosed);
 
   Send(
     {

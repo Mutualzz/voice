@@ -22,6 +22,11 @@ export default async function VoiceConnectTransport(
     if (!transport)
         throw server.error("TRANSPORT_NOT_FOUND", "Transport not found");
 
+    if ((transport as { dtlsState?: string }).dtlsState === "connected") {
+        Send({ ok: true }, peer, envelope);
+        return;
+    }
+
     await transport.connect({ dtlsParameters });
 
     Send(

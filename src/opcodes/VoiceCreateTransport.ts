@@ -50,8 +50,24 @@ export default async function VoiceCreateTransport(
         }
     }
 
-    if (direction === "send") peer.sendTransport = transport;
-    else peer.receiverTransport = transport;
+    if (direction === "send") {
+      if (peer.sendTransport && peer.sendTransport.id !== transport.id) {
+        try {
+          peer.sendTransport.close();
+        } catch {}
+      }
+      peer.sendTransport = transport;
+    } else {
+      if (
+        peer.receiverTransport &&
+        peer.receiverTransport.id !== transport.id
+      ) {
+        try {
+          peer.receiverTransport.close();
+        } catch {}
+      }
+      peer.receiverTransport = transport;
+    }
 
     let iceServers: RTCIceServer[] = [];
     try {

@@ -5,6 +5,63 @@ import type { VoicePeer } from "../types";
 import Message from "./Message";
 import { logger } from "../Logger";
 import Close from "./Close";
+import { VoiceOpcodes } from "@mutualzz/types";
+
+const AUTH_TIMEOUT_MS = 5_000;
+
+const parseAuthEnvelope = (
+  raw: string,
+): { id: string; token: string } | null => {
+  try {
+    const envelope = JSON.parse(raw) as {
+      id?: unknown;
+      op?: unknown;
+      data?: { token?: unknown };
+    };
+    if (envelope.op !== VoiceOpcodes.VoiceAuthenticate) return null;
+    const token = envelope.data?.token;
+    if (typeof token !== "string" || !token) return null;
+    return { id: String(envelope.id ?? ""), token };
+  } catch {
+    return null;
+  }
+};
+
+const waitForAuthToken = (
+  pendingFrames: string[],
+  timeoutMs: number,
+): Promise<{ id: string; token: string } | null> =>
+  new Promise((resolve) => {
+    const tryTake = () => {
+      for (let i = 0; i < pendingFrames.length; i++) {
+        const parsed = parseAuthEnvelope(pendingFrames[i]!);
+        if (!parsed) continue;
+        pendingFrames.splice(i, 1);
+        return parsed;
+      }
+      return null;
+    };
+
+    const immediate = tryTake();
+    if (immediate) {
+      resolve(immediate);
+      return;
+    }
+
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const found = tryTake();
+      if (found) {
+        clearInterval(timer);
+        resolve(found);
+        return;
+      }
+      if (Date.now() - started >= timeoutMs) {
+        clearInterval(timer);
+        resolve(null);
+      }
+    }, 10);
+  });
 
 export default async function Connection(
   this: Server,
@@ -13,6 +70,8 @@ export default async function Connection(
 ) {
   const pendingFrames: string[] = [];
   let ready = false;
+  let room: Awaited<ReturnType<Server["getOrCreateRoom"]>> | null = null;
+  let peer: VoicePeer | null = null;
 
   socket.on("message", (raw) => {
     const rawText =
@@ -33,6 +92,7 @@ export default async function Connection(
       return;
     }
 
+    if (!room || !peer) return;
     void Message(this, room, peer, rawText);
   });
 
@@ -40,24 +100,41 @@ export default async function Connection(
     logger.error(error);
     try {
       socket.close();
-    } catch {
-      // Ignore errors
-    }
+    } catch {}
   });
 
   const requestHost = request.headers.host ?? "localhost";
   const url = new URL(request.url ?? "/", `http://${requestHost}`);
-  const token = url.searchParams.get("token");
+  const queryToken = url.searchParams.get("token");
+
+  let token = queryToken;
+  let authRequestId: string | null = null;
+
+  if (!token) {
+    const auth = await waitForAuthToken(pendingFrames, AUTH_TIMEOUT_MS);
+    if (!auth) {
+      socket.close(4001, "Missing token");
+      return;
+    }
+    token = auth.token;
+    authRequestId = auth.id || null;
+  }
 
   const voiceSession = await this.verifyVoiceToken(socket, token);
   if (!voiceSession) return;
 
+  if (authRequestId) {
+    try {
+      socket.send(JSON.stringify({ id: authRequestId, ok: true, data: {} }));
+    } catch {}
+  }
+
   socket.sessionId = voiceSession.sessionId;
 
-  const room = await this.getOrCreateRoom(voiceSession.roomId);
+  room = await this.getOrCreateRoom(voiceSession.roomId);
   socket.roomId = room.roomId;
 
-  const peer: VoicePeer = {
+  peer = {
     userId: voiceSession.userId,
     sessionId: voiceSession.sessionId,
     roomId: voiceSession.roomId,
@@ -94,29 +171,28 @@ export default async function Connection(
       clearInterval(heartbeat);
       try {
         socket.terminate();
-      } catch {
-        // Ignore errors
-      }
+      } catch {}
       return;
     }
     (socket as any).isAlive = false;
     try {
       socket.ping();
-    } catch {
-      // Ignore errors
-    }
+    } catch {}
   }, 25_000);
+
+  const boundRoom = room;
+  const boundPeer = peer;
 
   socket.on("close", () => {
     clearInterval(heartbeat);
-    Close(this, room, peer);
+    Close(this, boundRoom, boundPeer);
   });
 
   ready = true;
   for (const frame of pendingFrames) {
-    void Message(this, room, peer, frame);
+    void Message(this, boundRoom, boundPeer, frame);
   }
   pendingFrames.length = 0;
 
-  this.broadcastPeerJoined(room, peer.userId);
+  this.broadcastPeerJoined(boundRoom, boundPeer.userId);
 }

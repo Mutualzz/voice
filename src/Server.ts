@@ -57,9 +57,11 @@ export class Server {
     userId: Snowflake,
     reasonCode = 4000,
     reason = "Kicked from voice",
+    roomId?: string | null,
   ) {
     const peer = this.activePeersByUserId.get(userId);
     if (!peer) return false;
+    if (roomId != null && peer.roomId !== roomId) return false;
 
     const room = this.getRoom(peer.roomId);
     if (!room) return false;

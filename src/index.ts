@@ -25,16 +25,19 @@ async function main() {
         const userId = data.userId;
         const reason = data.reason ?? "Kicked from voice";
         const spaceId = data.spaceId ?? null;
+        const roomId = data.roomId ?? null;
 
-        const ok = voice.kickPeerByUserId(userId, 4000, reason);
+        const ok = voice.kickPeerByUserId(userId, 4000, reason, roomId);
         if (!ok)
           logger.debug("kickPeerByUserId: user not found on voice server", {
             userId,
             spaceId,
+            roomId,
           });
         else
           logger.info("kicked voice peer via control channel", {
             userId,
+            roomId,
           });
       } catch (err) {
         logger.error("Failed to handle voice control message", err);

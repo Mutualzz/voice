@@ -24,7 +24,7 @@ const listenInfo = {
     announcedAddress,
     portRange: {
         min: 40000,
-        max: 40100,
+        max: 49999,
     },
     exposeInternalIp: false,
 } as TransportListenInfo;
