@@ -103,8 +103,7 @@ export default async function VoiceProduce(
     );
   };
 
-  producer.on("close", publishClosed);
-  producer.on("transportclose", publishClosed);
+  producer.observer.on("close", publishClosed);
 
   Send(
     {
