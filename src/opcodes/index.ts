@@ -9,6 +9,7 @@ import VoiceConsume from "./VoiceConsume";
 import VoiceResumeConsumer from "./VoiceResumeConsumer";
 import VoiceLeave from "./VoiceLeave";
 import VoiceCloseProducer from "./VoiceCloseProducer";
+import VoiceAuthenticate from "./VoiceAuthenticate";
 
 import type { Server } from "../Server";
 import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
@@ -30,6 +31,7 @@ const OPCodeHandlers: Record<number, OPCodeHandler> = {
     [VoiceOpcodes.VoiceResumeConsumer]: VoiceResumeConsumer,
     [VoiceOpcodes.VoiceCloseProducer]: VoiceCloseProducer,
     [VoiceOpcodes.VoiceLeave]: VoiceLeave,
+    [VoiceOpcodes.VoiceAuthenticate]: VoiceAuthenticate,
 };
 
 export default OPCodeHandlers;

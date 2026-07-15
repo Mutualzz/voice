@@ -8,6 +8,7 @@ import Close from "./Close";
 import { VoiceOpcodes } from "@mutualzz/types";
 
 const AUTH_TIMEOUT_MS = 5_000;
+const VOICE_AUTHENTICATE_OP = VoiceOpcodes.VoiceAuthenticate ?? 9;
 
 const parseAuthEnvelope = (
   raw: string,
@@ -18,7 +19,7 @@ const parseAuthEnvelope = (
       op?: unknown;
       data?: { token?: unknown };
     };
-    if (envelope.op !== VoiceOpcodes.VoiceAuthenticate) return null;
+    if (envelope.op !== VOICE_AUTHENTICATE_OP) return null;
     const token = envelope.data?.token;
     if (typeof token !== "string" || !token) return null;
     return { id: String(envelope.id ?? ""), token };
@@ -27,41 +28,56 @@ const parseAuthEnvelope = (
   }
 };
 
+const takeAuthEnvelope = (
+  pendingFrames: string[],
+): { id: string; token: string } | null => {
+  for (let i = 0; i < pendingFrames.length; i++) {
+    const parsed = parseAuthEnvelope(pendingFrames[i]!);
+    if (!parsed) continue;
+    pendingFrames.splice(i, 1);
+    return parsed;
+  }
+  return null;
+};
+
 const waitForAuthToken = (
   pendingFrames: string[],
+  notify: { current: (() => void) | null },
   timeoutMs: number,
 ): Promise<{ id: string; token: string } | null> =>
   new Promise((resolve) => {
-    const tryTake = () => {
-      for (let i = 0; i < pendingFrames.length; i++) {
-        const parsed = parseAuthEnvelope(pendingFrames[i]!);
-        if (!parsed) continue;
-        pendingFrames.splice(i, 1);
-        return parsed;
-      }
-      return null;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = (value: { id: string; token: string } | null) => {
+      if (settled) return;
+      settled = true;
+      notify.current = null;
+      if (timer) clearTimeout(timer);
+      resolve(value);
     };
 
-    const immediate = tryTake();
-    if (immediate) {
-      resolve(immediate);
-      return;
-    }
+    const tryTake = () => {
+      const found = takeAuthEnvelope(pendingFrames);
+      if (found) finish(found);
+    };
 
-    const started = Date.now();
-    const timer = setInterval(() => {
-      const found = tryTake();
-      if (found) {
-        clearInterval(timer);
-        resolve(found);
-        return;
-      }
-      if (Date.now() - started >= timeoutMs) {
-        clearInterval(timer);
-        resolve(null);
-      }
-    }, 10);
+    notify.current = tryTake;
+    tryTake();
+    if (settled) return;
+
+    timer = setTimeout(() => finish(null), timeoutMs);
   });
+
+const ackAuthEnvelope = (
+  socket: VoiceWebSocket,
+  auth: { id: string; token: string } | null,
+) => {
+  if (!auth?.id) return;
+  try {
+    socket.send(JSON.stringify({ id: auth.id, ok: true, data: {} }));
+  } catch {}
+};
 
 export default async function Connection(
   this: Server,
@@ -72,6 +88,7 @@ export default async function Connection(
   let ready = false;
   let room: Awaited<ReturnType<Server["getOrCreateRoom"]>> | null = null;
   let peer: VoicePeer | null = null;
+  const authNotify: { current: (() => void) | null } = { current: null };
 
   socket.on("message", (raw) => {
     const rawText =
@@ -89,6 +106,7 @@ export default async function Connection(
 
     if (!ready) {
       pendingFrames.push(rawText);
+      authNotify.current?.();
       return;
     }
 
@@ -111,7 +129,11 @@ export default async function Connection(
   let authRequestId: string | null = null;
 
   if (!token) {
-    const auth = await waitForAuthToken(pendingFrames, AUTH_TIMEOUT_MS);
+    const auth = await waitForAuthToken(
+      pendingFrames,
+      authNotify,
+      AUTH_TIMEOUT_MS,
+    );
     if (!auth) {
       socket.close(4001, "Missing token");
       return;
@@ -124,9 +146,9 @@ export default async function Connection(
   if (!voiceSession) return;
 
   if (authRequestId) {
-    try {
-      socket.send(JSON.stringify({ id: authRequestId, ok: true, data: {} }));
-    } catch {}
+    ackAuthEnvelope(socket, { id: authRequestId, token });
+  } else {
+    ackAuthEnvelope(socket, takeAuthEnvelope(pendingFrames));
   }
 
   socket.sessionId = voiceSession.sessionId;
