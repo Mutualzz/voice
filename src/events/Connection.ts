@@ -6,6 +6,7 @@ import Message from "./Message";
 import { logger } from "../Logger";
 import Close from "./Close";
 import { VoiceOpcodes } from "@mutualzz/types";
+import { redis } from "../util/Redis";
 
 const AUTH_TIMEOUT_MS = 5_000;
 const VOICE_AUTHENTICATE_OP = VoiceOpcodes.VoiceAuthenticate ?? 9;
@@ -72,10 +73,17 @@ const waitForAuthToken = (
 const ackAuthEnvelope = (
   socket: VoiceWebSocket,
   auth: { id: string; token: string } | null,
+  rtpCapabilities?: unknown,
 ) => {
   if (!auth?.id) return;
   try {
-    socket.send(JSON.stringify({ id: auth.id, ok: true, data: {} }));
+    socket.send(
+      JSON.stringify({
+        id: auth.id,
+        ok: true,
+        data: rtpCapabilities ? { rtpCapabilities } : {},
+      }),
+    );
   } catch {}
 };
 
@@ -145,22 +153,29 @@ export default async function Connection(
   const voiceSession = await this.verifyVoiceToken(socket, token);
   if (!voiceSession) return;
 
-  if (authRequestId) {
-    ackAuthEnvelope(socket, { id: authRequestId, token });
-  } else {
-    ackAuthEnvelope(socket, takeAuthEnvelope(pendingFrames));
-  }
-
   socket.sessionId = voiceSession.sessionId;
 
   room = await this.getOrCreateRoom(voiceSession.roomId);
   socket.roomId = room.roomId;
+
+  const rawState = await redis.get(`voice:state:${voiceSession.userId}`);
+  let serverMuted = false;
+  let serverDeafened = false;
+  if (rawState) {
+    try {
+      const state = JSON.parse(rawState);
+      serverMuted = state.spaceMute === true || state.spaceDeaf === true;
+      serverDeafened = state.spaceDeaf === true;
+    } catch {}
+  }
 
   peer = {
     userId: voiceSession.userId,
     sessionId: voiceSession.sessionId,
     roomId: voiceSession.roomId,
     voiceToken: token,
+    serverMuted,
+    serverDeafened,
     socket,
     producers: new Map(),
     consumers: new Map(),
@@ -182,6 +197,16 @@ export default async function Connection(
   this.activePeersByUserId.set(peer.userId, peer);
 
   socket.currentPeerId = peer.userId;
+
+  if (authRequestId) {
+    ackAuthEnvelope(socket, { id: authRequestId, token }, room.router.rtpCapabilities);
+  } else {
+    ackAuthEnvelope(
+      socket,
+      takeAuthEnvelope(pendingFrames),
+      room.router.rtpCapabilities,
+    );
+  }
 
   (socket as any).isAlive = true;
   socket.on("pong", () => {

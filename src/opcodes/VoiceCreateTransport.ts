@@ -69,14 +69,19 @@ export default async function VoiceCreateTransport(
       peer.receiverTransport = transport;
     }
 
-    let iceServers: RTCIceServer[] = [];
-    try {
-        iceServers = (await getCloudflareTurnCredentials()) ?? [];
-    } catch (err) {
-        logger.error(
-            "Failed to fetch Cloudflare TURN credentials — clients behind symmetric NAT may fail to connect",
-            { err },
-        );
+    let iceServers: RTCIceServer[] = peer.iceServers ?? [];
+    if (iceServers.length === 0) {
+        try {
+            iceServers = (await getCloudflareTurnCredentials()) ?? [];
+            if (iceServers.length > 0) {
+                peer.iceServers = iceServers;
+            }
+        } catch (err) {
+            logger.error(
+                "Failed to fetch Cloudflare TURN credentials — clients behind symmetric NAT may fail to connect",
+                { err },
+            );
+        }
     }
 
     const flat = flattenIceServers(iceServers);

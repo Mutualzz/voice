@@ -26,18 +26,41 @@ async function main() {
         const reason = data.reason ?? "Kicked from voice";
         const spaceId = data.spaceId ?? null;
         const roomId = data.roomId ?? null;
+        const sessionId = data.sessionId ?? null;
 
-        const ok = voice.kickPeerByUserId(userId, 4000, reason, roomId);
+        if (data.action === "moderation") {
+          void voice
+            .setPeerModeration(
+              userId,
+              data.muted === true,
+              data.deafened === true,
+              roomId,
+            )
+            .catch((err) =>
+              logger.error("Failed to apply voice moderation", err),
+            );
+          return;
+        }
+
+        const ok = voice.kickPeerByUserId(
+          userId,
+          4000,
+          reason,
+          roomId,
+          sessionId,
+        );
         if (!ok)
           logger.debug("kickPeerByUserId: user not found on voice server", {
             userId,
             spaceId,
             roomId,
+            sessionId,
           });
         else
           logger.info("kicked voice peer via control channel", {
             userId,
             roomId,
+            sessionId,
           });
       } catch (err) {
         logger.error("Failed to handle voice control message", err);

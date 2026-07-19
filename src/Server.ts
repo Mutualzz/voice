@@ -21,6 +21,7 @@ export class Server {
     string,
     ReturnType<typeof setTimeout>
   >();
+  private readonly roomCreatePromises = new Map<string, Promise<VoiceRoom>>();
 
   constructor() {
     this.server = http.createServer();
@@ -58,15 +59,63 @@ export class Server {
     reasonCode = 4000,
     reason = "Kicked from voice",
     roomId?: string | null,
+    sessionId?: string | null,
   ) {
     const peer = this.activePeersByUserId.get(userId);
     if (!peer) return false;
     if (roomId != null && peer.roomId !== roomId) return false;
+    if (sessionId != null && peer.sessionId !== sessionId) return false;
 
     const room = this.getRoom(peer.roomId);
     if (!room) return false;
 
     this.disconnectPeer(peer, reasonCode, reason);
+    return true;
+  }
+
+  async setPeerModeration(
+    userId: Snowflake,
+    muted: boolean,
+    deafened: boolean,
+    roomId?: string | null,
+  ) {
+    const peer = this.activePeersByUserId.get(userId);
+    if (!peer) return false;
+    if (roomId != null && peer.roomId !== roomId) return false;
+
+    peer.serverMuted = muted;
+    peer.serverDeafened = deafened;
+
+    await Promise.all([
+      ...Array.from(peer.producers.values())
+        .filter(
+          (producer) =>
+            producer.kind === "audio" &&
+            producer.appData.mediaKind !== "screen-audio",
+        )
+        .map((producer) => (muted ? producer.pause() : producer.resume())),
+      ...Array.from(peer.consumers.values())
+        .filter((consumer) => consumer.kind === "audio")
+        .map(async (consumer) => {
+          if (deafened) {
+            if (!consumer.paused) {
+              consumer.appData.serverDeafenedPaused = true;
+              await consumer.pause();
+            }
+            return;
+          }
+          if (consumer.appData.serverDeafenedPaused === true) {
+            consumer.appData.serverDeafenedPaused = false;
+            await consumer.resume();
+          } else if (
+            consumer.appData.clientResumeRequested === true &&
+            consumer.paused
+          ) {
+            await consumer.resume();
+          }
+        }),
+    ]);
+
     return true;
   }
 
@@ -137,23 +186,44 @@ export class Server {
     const existing = this.rooms.get(roomId);
     if (existing) return existing;
 
-    const { worker, workerIndex } = this.getNextWorker();
-    const mediaCodecs = config.router.mediaCodecs;
+    const pendingCreate = this.roomCreatePromises.get(roomId);
+    if (pendingCreate) return pendingCreate;
 
-    const router = await worker.createRouter({
-      mediaCodecs,
-    });
+    const create = (async () => {
+      const { worker, workerIndex } = this.getNextWorker();
+      const mediaCodecs = config.router.mediaCodecs;
 
-    const room: VoiceRoom = {
-      roomId,
-      router,
-      peers: new Map(),
-      workerIndex,
-    };
+      const router = await worker.createRouter({
+        mediaCodecs,
+      });
 
-    this.rooms.set(roomId, room);
+      const current = this.rooms.get(roomId);
+      if (current) {
+        try {
+          router.close();
+        } catch {
+          /* empty */
+        }
+        return current;
+      }
 
-    return room;
+      const room: VoiceRoom = {
+        roomId,
+        router,
+        peers: new Map(),
+        workerIndex,
+      };
+
+      this.rooms.set(roomId, room);
+      return room;
+    })();
+
+    this.roomCreatePromises.set(roomId, create);
+    try {
+      return await create;
+    } finally {
+      this.roomCreatePromises.delete(roomId);
+    }
   }
 
   closeRoom(room: VoiceRoom) {
@@ -161,11 +231,21 @@ export class Server {
     if (existingTimer) return;
 
     const timer = setTimeout(() => {
+      const currentRoom = this.rooms.get(room.roomId);
+      if (!currentRoom || currentRoom.peers.size > 0) {
+        this.roomCloseTimers.delete(room.roomId);
+        return;
+      }
+
+      this.rooms.delete(room.roomId);
       this.roomCloseTimers.delete(room.roomId);
 
-      const currentRoom = this.rooms.get(room.roomId);
-      if (!currentRoom) return;
-      if (currentRoom.peers.size > 0) return;
+      if (currentRoom.peers.size > 0) {
+        if (!this.rooms.has(room.roomId)) {
+          this.rooms.set(room.roomId, currentRoom);
+        }
+        return;
+      }
 
       try {
         currentRoom.router.close();
@@ -173,7 +253,6 @@ export class Server {
         /* empty */
       }
 
-      this.rooms.delete(room.roomId);
       logger.debug(`Room ${room.roomId} closed`);
     }, config.roomCloseDelayMs);
 
@@ -185,6 +264,7 @@ export class Server {
   }
 
   disconnectPeer(peer: VoicePeer, reasonCode = 4000, reason = "Replaced") {
+    let broadcastLeft = false;
     try {
       peer.socket.close(reasonCode, reason);
     } catch {
@@ -193,9 +273,18 @@ export class Server {
 
     try {
       const room = this.getRoom(peer.roomId);
-      if (room) this.cleanupPeer(room, peer);
+      if (room) broadcastLeft = this.cleanupPeer(room, peer);
     } catch {
       /* empty */
+    }
+
+    if (broadcastLeft) {
+      try {
+        const room = this.getRoom(peer.roomId);
+        if (room) this.broadcastPeerLeft(room, peer.userId);
+      } catch {
+        /* empty */
+      }
     }
   }
 
@@ -230,12 +319,18 @@ export class Server {
       /* empty */
     }
 
-    room.peers.delete(peer.userId);
+    const wasRoomPeer = room.peers.get(peer.userId) === peer;
+    if (wasRoomPeer) room.peers.delete(peer.userId);
 
     const active = this.activePeersByUserId.get(peer.userId);
     if (active === peer) this.activePeersByUserId.delete(peer.userId);
 
     this.closeRoom(room);
+    return wasRoomPeer;
+  }
+
+  isCurrentPeer(room: VoiceRoom, peer: VoicePeer) {
+    return room.peers.get(peer.userId) === peer;
   }
 
   pushExistingProducers(room: VoiceRoom, peer: VoicePeer) {
@@ -247,6 +342,7 @@ export class Server {
           const mediaKind =
             (producer.appData?.mediaKind as string | undefined) ??
             (producer.kind === "video" ? "camera" : "audio");
+          const videoOrientation = producer.appData?.videoOrientation;
 
           this.push(peer, {
             op: VoiceDispatchEvents.VoiceNewProducer,
@@ -255,6 +351,9 @@ export class Server {
               producerId: producer.id,
               kind: producer.kind,
               mediaKind,
+              ...(typeof videoOrientation === "number"
+                ? { videoOrientation }
+                : {}),
             },
           });
         } catch (err) {

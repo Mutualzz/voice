@@ -9,6 +9,13 @@ export default async function VoiceLeave(
     envelope: ClientMessageEnvelope,
 ) {
     Send({ ok: true }, peer, envelope);
-    server.cleanupPeer(room, peer);
+    const wasCurrent = server.cleanupPeer(room, peer);
+    if (wasCurrent) {
+        try {
+            server.broadcastPeerLeft(room, peer.userId);
+        } catch {
+            /* empty */
+        }
+    }
     peer.socket.close(1000, "leave");
 }

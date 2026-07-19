@@ -47,6 +47,8 @@ export interface VoicePeer {
   sessionId: string;
   roomId: string;
   voiceToken?: string | null;
+  serverMuted: boolean;
+  serverDeafened: boolean;
 
   socket: WebSocket;
 
@@ -54,6 +56,7 @@ export interface VoicePeer {
 
   sendTransport?: mediasoup.types.WebRtcTransport;
   receiverTransport?: mediasoup.types.WebRtcTransport;
+  iceServers?: RTCIceServer[];
 
   producers: Map<string, mediasoup.types.Producer>;
   consumers: Map<string, mediasoup.types.Consumer>;

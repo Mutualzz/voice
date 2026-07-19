@@ -4,9 +4,18 @@ import { Send } from "../util/Common";
 
 export default function VoiceAuthenticate(
   _server: Server,
-  _room: VoiceRoom,
+  room: VoiceRoom,
   peer: VoicePeer,
   envelope: ClientMessageEnvelope,
 ) {
-  Send({ ok: true, data: {} }, peer, envelope);
+  Send(
+    {
+      ok: true,
+      data: {
+        rtpCapabilities: room.router.rtpCapabilities,
+      },
+    },
+    peer,
+    envelope,
+  );
 }

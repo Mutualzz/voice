@@ -2,6 +2,7 @@ import type { Server } from "../Server";
 import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
 import { Send } from "../util/Common";
 import { VoiceDispatchEvents } from "@mutualzz/types";
+import { redis } from "../util/Redis";
 
 export default async function VoiceConsume(
     server: Server,
@@ -13,6 +14,13 @@ export default async function VoiceConsume(
         throw server.error("MISSING_CAPS", "RTP caps not set");
     if (!peer.receiverTransport)
         throw server.error("NO_RECV_TRANSPORT", "Recv transport missing");
+
+    const voiceToken = peer.voiceToken ?? null;
+    if (!voiceToken) throw server.error("UNAUTHORIZED", "Missing voice token");
+
+    const currentToken = await redis.get(`voice:currentToken:${peer.userId}`);
+    if (!currentToken || currentToken !== voiceToken)
+        throw server.error("UNAUTHORIZED", "Voice token has been rotated");
 
     const producerId = envelope.data?.producerId.toString();
 

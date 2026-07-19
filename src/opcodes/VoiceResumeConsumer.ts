@@ -13,6 +13,8 @@ export default async function VoiceResumeConsumer(
     if (!consumer)
         throw server.error("CONSUMER_NOT_FOUND", "Consumer not found");
 
-    await consumer.resume();
+    consumer.appData.clientResumeRequested = true;
+    if (!(peer.serverDeafened && consumer.kind === "audio"))
+        await consumer.resume();
     Send({ ok: true }, peer, envelope);
 }

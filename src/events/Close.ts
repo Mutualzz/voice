@@ -6,11 +6,13 @@ export default function Close(
   room: VoiceRoom,
   peer: VoicePeer,
 ) {
+  const wasCurrent = server.isCurrentPeer(room, peer);
+  server.cleanupPeer(room, peer);
+  if (!wasCurrent) return;
+
   try {
     server.broadcastPeerLeft(room, peer.userId);
   } catch {
-    // Ignore errors
+    /* empty */
   }
-
-  server.cleanupPeer(room, peer);
 }

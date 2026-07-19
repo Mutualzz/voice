@@ -1,6 +1,49 @@
 import { logger } from "../Logger";
 
+type CachedTurn = {
+    iceServers: RTCIceServer[];
+    expiresAt: number;
+};
+
+let cache: CachedTurn | null = null;
+let inflight: Promise<RTCIceServer[] | null> | null = null;
+
+const CACHE_SKEW_MS = 60_000;
+
 export async function getCloudflareTurnCredentials(): Promise<
+    RTCIceServer[] | null
+> {
+    const now = Date.now();
+    if (cache && cache.expiresAt > now + CACHE_SKEW_MS) {
+        return cache.iceServers;
+    }
+
+    if (inflight) return inflight;
+
+    inflight = fetchCloudflareTurnCredentials()
+        .then((iceServers) => {
+            if (iceServers) {
+                const ttlSec = process.env.CF_TURN_TTL
+                    ? parseInt(process.env.CF_TURN_TTL, 10)
+                    : 86400;
+                const ttlMs = Number.isFinite(ttlSec)
+                    ? Math.max(60, ttlSec) * 1000
+                    : 86_400_000;
+                cache = {
+                    iceServers,
+                    expiresAt: Date.now() + ttlMs,
+                };
+            }
+            return iceServers;
+        })
+        .finally(() => {
+            inflight = null;
+        });
+
+    return inflight;
+}
+
+async function fetchCloudflareTurnCredentials(): Promise<
     RTCIceServer[] | null
 > {
     const keyId = process.env.CF_TURN_KEY_ID;

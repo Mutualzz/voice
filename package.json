@@ -1,38 +1,38 @@
 {
-    "name": "@mutualzz/voice",
-    "version": "2.1.0",
-    "description": "",
-    "scripts": {
-        "build": "pnpm typecheck && tsdown",
-        "build:dev": "tsdown",
-        "db:push": "drizzle-kit push",
-        "lint": "eslint .",
-        "prestart": "pnpm build",
-        "start": "node -r dotenv/config ./dist/index.mjs",
-        "dev": "nodemon",
-        "typecheck": "tsc --noEmit"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "MIT",
-    "type": "module",
-    "dependencies": {
-        "@mutualzz/logger": "workspace:*",
-        "@mutualzz/server": "workspace:*",
-        "ioredis": "^5.11.0",
-        "mediasoup": "^3.20.0",
-        "ws": "^8.21.0"
-    },
-    "devDependencies": {
-        "@mutualzz/eslint-config": "workspace:*",
-        "@mutualzz/types": "workspace:*",
-        "@types/ws": "^8.18.1",
-        "cross-env": "10.1.0",
-        "dotenv": "^17.4.2",
-        "nodemon": "^3.1.14",
-        "ts-node": "^10.9.2",
-        "tsconfig-paths": "^4.2.0",
-        "tsdown": "^0.22.1"
-    },
-    "private": true
+  "name": "@mutualzz/voice",
+  "version": "2.2.0",
+  "description": "",
+  "scripts": {
+    "build": "pnpm typecheck && tsdown",
+    "build:dev": "tsdown",
+    "db:push": "drizzle-kit push",
+    "lint": "eslint .",
+    "prestart": "pnpm build",
+    "start": "node -r dotenv/config ./dist/index.mjs",
+    "dev": "nodemon",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@mutualzz/logger": "workspace:*",
+    "@mutualzz/server": "workspace:*",
+    "ioredis": "^5.11.0",
+    "mediasoup": "^3.20.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@mutualzz/eslint-config": "workspace:*",
+    "@mutualzz/types": "workspace:*",
+    "@types/ws": "^8.18.1",
+    "cross-env": "10.1.0",
+    "dotenv": "^17.4.2",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "tsdown": "^0.22.1"
+  },
+  "private": true
 }

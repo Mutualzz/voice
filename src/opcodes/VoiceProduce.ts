@@ -22,7 +22,7 @@ export default async function VoiceProduce(
   if (!session) throw server.error("UNAUTHORIZED", "Invalid voice token");
 
   const currentToken = await redis.get(`voice:currentToken:${peer.userId}`);
-  if (currentToken && currentToken !== voiceToken)
+  if (!currentToken || currentToken !== voiceToken)
     throw server.error("UNAUTHORIZED", "Voice token has been rotated");
 
   if (session.userId !== peer.userId)
@@ -65,11 +65,13 @@ export default async function VoiceProduce(
     throw server.error("NOT_IN_VOICE", "User is not in a voice channel");
 
   if (kind === "audio") {
-    if (state.spaceMute === true || state.spaceDeaf === true) {
-      throw server.error(
-        "VOICE_MUTED",
-        "User is server-muted or server-deafened",
-      );
+    const mediaKind = envelope.data?.appData?.mediaKind as string | undefined;
+    if (
+      mediaKind !== "screen-audio" &&
+      (state.spaceMute === true || state.spaceDeaf === true)
+    ) {
+      peer.serverMuted = true;
+      if (state.spaceDeaf === true) peer.serverDeafened = true;
     }
   }
 
@@ -86,10 +88,18 @@ export default async function VoiceProduce(
       mediaKind:
         envelope.data?.appData?.mediaKind ??
         (kind === "video" ? "camera" : "audio"),
+      videoOrientation: envelope.data?.appData?.videoOrientation,
     },
   });
 
   peer.producers.set(producer.id, producer);
+  if (
+    peer.serverMuted &&
+    producer.kind === "audio" &&
+    producer.appData.mediaKind !== "screen-audio"
+  ) {
+    await producer.pause();
+  }
 
   const publishClosed = () => {
     if (!peer.producers.delete(producer.id)) return;
@@ -116,6 +126,7 @@ export default async function VoiceProduce(
     envelope,
   );
 
+  const videoOrientation = producer.appData.videoOrientation;
   server.broadcast(
     room,
     {
@@ -126,6 +137,9 @@ export default async function VoiceProduce(
         kind,
         mediaKind:
           producer.appData.mediaKind ?? (kind === "video" ? "camera" : "audio"),
+        ...(typeof videoOrientation === "number"
+          ? { videoOrientation }
+          : {}),
       },
     },
     peer.userId,
