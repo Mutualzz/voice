@@ -6,7 +6,7 @@
     "build": "pnpm typecheck && tsdown",
     "build:dev": "tsdown",
     "db:push": "drizzle-kit push",
-    "lint": "eslint .",
+    "lint": "eslint src",
     "prestart": "pnpm build",
     "start": "node -r dotenv/config ./dist/index.mjs",
     "dev": "nodemon",

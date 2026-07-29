@@ -1,9 +1,9 @@
 import { logger } from "../Logger";
 
-type CachedTurn = {
+interface CachedTurn {
     iceServers: RTCIceServer[];
     expiresAt: number;
-};
+}
 
 let cache: CachedTurn | null = null;
 let inflight: Promise<RTCIceServer[] | null> | null = null;

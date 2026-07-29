@@ -3,7 +3,7 @@
 Thanks for wanting to help with **Mutualzz Voice (SFU)**.
 
 Contributions are welcome. Redistributing unofficial builds or hosting a
-competing Mutualzz service is still not allowed — see [`LICENSE`](./LICENSE).
+competing Mutualzz service is still not allowed — see [`LICENSE`](https://github.com/Mutualzz/voice/blob/master/LICENSE).
 
 
 ## Credit

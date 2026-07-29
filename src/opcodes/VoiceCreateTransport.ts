@@ -54,7 +54,9 @@ export default async function VoiceCreateTransport(
       if (peer.sendTransport && peer.sendTransport.id !== transport.id) {
         try {
           peer.sendTransport.close();
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
       peer.sendTransport = transport;
     } else {
@@ -64,7 +66,9 @@ export default async function VoiceCreateTransport(
       ) {
         try {
           peer.receiverTransport.close();
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
       peer.receiverTransport = transport;
     }

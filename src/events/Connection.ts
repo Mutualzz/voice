@@ -33,7 +33,7 @@ const takeAuthEnvelope = (
   pendingFrames: string[],
 ): { id: string; token: string } | null => {
   for (let i = 0; i < pendingFrames.length; i++) {
-    const parsed = parseAuthEnvelope(pendingFrames[i]!);
+    const parsed = parseAuthEnvelope(pendingFrames[i]);
     if (!parsed) continue;
     pendingFrames.splice(i, 1);
     return parsed;
@@ -84,7 +84,9 @@ const ackAuthEnvelope = (
         data: rtpCapabilities ? { rtpCapabilities } : {},
       }),
     );
-  } catch {}
+  } catch {
+    // ignore
+  }
 };
 
 export default async function Connection(
@@ -126,7 +128,9 @@ export default async function Connection(
     logger.error(error);
     try {
       socket.close();
-    } catch {}
+    } catch {
+    // ignore
+  }
   });
 
   const requestHost = request.headers.host ?? "localhost";
@@ -166,7 +170,9 @@ export default async function Connection(
       const state = JSON.parse(rawState);
       serverMuted = state.spaceMute === true || state.spaceDeaf === true;
       serverDeafened = state.spaceDeaf === true;
-    } catch {}
+    } catch {
+    // ignore
+  }
   }
 
   peer = {
@@ -218,13 +224,17 @@ export default async function Connection(
       clearInterval(heartbeat);
       try {
         socket.terminate();
-      } catch {}
+      } catch {
+    // ignore
+  }
       return;
     }
     (socket as any).isAlive = false;
     try {
       socket.ping();
-    } catch {}
+    } catch {
+    // ignore
+  }
   }, 25_000);
 
   const boundRoom = room;
