@@ -22,7 +22,28 @@ export const Send = (
   );
 };
 
-export const base64UrlEncode = (input: Buffer | string) =>
+export const withTimeout = <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Operation timed out"));
+    }, timeoutMs);
+
+    promise
+      .then((result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+};
+
+export const base64UrlEncode =(input: Buffer | string) =>
   Buffer.from(input)
     .toString("base64")
     .replace(/=/g, "")

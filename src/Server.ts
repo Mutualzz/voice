@@ -1,8 +1,10 @@
 import { WebSocketServer } from "ws";
-import http, { type Server as HttpServer } from "http";
+import http, { type Server as HttpServer, type ServerResponse } from "http";
+import type Redis from "ioredis";
 import { createWorker, type types } from "mediasoup";
 import type { ServerPushEnvelope, VoicePeer, VoiceRoom } from "./types.ts";
-import { verifyVoiceToken } from "./util/Common";
+import { verifyVoiceToken, withTimeout } from "./util/Common";
+import { redis } from "./util/Redis";
 import { logger } from "./Logger.ts";
 import type { VoiceWebSocket } from "./util/WebSocket";
 import { type Snowflake, VoiceDispatchEvents } from "@mutualzz/types";
@@ -14,6 +16,7 @@ export class Server {
   readonly workers: types.Worker[] = [];
   nextWorkerIndex = 0;
   readonly activePeersByUserId = new Map<Snowflake, VoicePeer>();
+  redisSubscriber: Redis | null = null;
   private readonly server: HttpServer;
   private readonly ws: WebSocketServer;
   private workersReady = false;
@@ -24,7 +27,14 @@ export class Server {
   private readonly roomCreatePromises = new Map<string, Promise<VoiceRoom>>();
 
   constructor() {
-    this.server = http.createServer();
+    this.server = http.createServer((req, res) => {
+      if (req.url?.split("?")[0] === "/health") {
+        void this.handleHealth(res);
+        return;
+      }
+
+      res.writeHead(404).end();
+    });
     this.ws = new WebSocketServer({ server: this.server });
 
     this.ws.on("connection", (socket, request) => {
@@ -117,6 +127,56 @@ export class Server {
     ]);
 
     return true;
+  }
+
+  private async handleHealth(res: ServerResponse) {
+    const [workersCheck, redisCheck] = await Promise.allSettled([
+      Promise.all(
+        this.workers.map((worker) =>
+          withTimeout(worker.getResourceUsage(), 2000),
+        ),
+      ),
+      withTimeout(redis.ping(), 2000),
+    ]);
+
+    const checks = {
+      workers:
+        this.workersReady &&
+        this.workers.length > 0 &&
+        workersCheck.status === "fulfilled"
+          ? "ok"
+          : "error",
+      redis: redisCheck.status === "fulfilled" ? "ok" : "error",
+      pubsub: this.redisSubscriber?.status === "ready" ? "ok" : "error",
+    };
+
+    const healthy = Object.values(checks).every((check) => check === "ok");
+
+    if (!healthy) {
+      logger.error(`Health check failed: ${JSON.stringify(checks)}`, {
+        workers:
+          workersCheck.status === "rejected"
+            ? workersCheck.reason
+            : `${this.workers.length} workers, ready=${this.workersReady}`,
+        redis: redisCheck.status === "rejected" ? redisCheck.reason : null,
+        pubsub: this.redisSubscriber?.status ?? "not started",
+      });
+    }
+
+    res
+      .writeHead(healthy ? 200 : 503, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      })
+      .end(
+        JSON.stringify({
+          status: healthy ? "ok" : "fail",
+          uptime: process.uptime(),
+          rooms: this.rooms.size,
+          peers: this.activePeersByUserId.size,
+          ...checks,
+        }),
+      );
   }
 
   async stop() {

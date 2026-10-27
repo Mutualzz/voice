@@ -1,9 +1,7 @@
 import { Server } from "./Server.ts";
 import { logger } from "./Logger.ts";
-import type Redis from "ioredis";
 import { redis } from "./util/Redis.ts";
 
-let redisSubscriber: Redis | null = null;
 const voice = new Server();
 
 process.on("SIGTERM", async () => {
@@ -15,7 +13,7 @@ process.on("SIGTERM", async () => {
 async function main() {
   try {
     const sub = redis.duplicate();
-    redisSubscriber = sub;
+    voice.redisSubscriber = sub;
 
     sub.on("message", (channel, message) => {
       if (channel !== "voice:control:kick") return;
