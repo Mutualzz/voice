@@ -2,6 +2,8 @@ import type { Server } from "../Server";
 import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
 import { Send } from "../util/Common";
 import type { RtpCapabilities } from "mediasoup/types";
+import { parseData } from "../util/Validation";
+import { voiceSetRtpCapabilitiesData } from "@mutualzz/validators";
 
 export default function VoiceSetRTPCapabilities(
     server: Server,
@@ -9,7 +11,12 @@ export default function VoiceSetRTPCapabilities(
     peer: VoicePeer,
     envelope: ClientMessageEnvelope,
 ) {
-    peer.rtpCapabilities = envelope.data?.rtpCapabilities as RtpCapabilities;
+    const { rtpCapabilities } = parseData(
+        server,
+        voiceSetRtpCapabilitiesData,
+        envelope,
+    );
+    peer.rtpCapabilities = rtpCapabilities as unknown as RtpCapabilities;
 
     server.pushExistingProducers(room, peer);
 

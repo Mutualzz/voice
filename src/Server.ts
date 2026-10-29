@@ -469,6 +469,7 @@ export class Server {
   error(code: string, message: string) {
     const error = new Error(message) as any;
     error.code = code;
+    error.expose = true;
     return error;
   }
 }

@@ -3,6 +3,9 @@ import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
 import { Send, verifyVoiceToken, VOICE_SESSION_TTL_SECONDS } from "../util/Common";
 import { VoiceDispatchEvents } from "@mutualzz/types";
 import { redis } from "../util/Redis";
+import { parseData } from "../util/Validation";
+import { voiceProduceData } from "@mutualzz/validators";
+import type { RtpParameters } from "mediasoup/types";
 
 export default async function VoiceProduce(
   server: Server,
@@ -10,7 +13,11 @@ export default async function VoiceProduce(
   peer: VoicePeer,
   envelope: ClientMessageEnvelope,
 ) {
-  const { transportId, kind, rtpParameters } = envelope.data;
+  const { transportId, kind, rtpParameters, appData } = parseData(
+    server,
+    voiceProduceData,
+    envelope,
+  );
 
   if (!peer.sendTransport || peer.sendTransport.id !== transportId)
     throw server.error("BAD_TRANSPORT", "Send transport not ready");
@@ -65,7 +72,20 @@ export default async function VoiceProduce(
     throw server.error("NOT_IN_VOICE", "User is not in a voice channel");
 
   if (kind === "audio") {
-    const mediaKind = envelope.data?.appData?.mediaKind as string | undefined;
+    const mediaKind = appData?.mediaKind;
+
+    // Screen audio skips server mute, so it's only accepted alongside a live screen share
+    if (
+      mediaKind === "screen-audio" &&
+      ![...peer.producers.values()].some(
+        (p) => !p.closed && p.appData.mediaKind === "screen",
+      )
+    )
+      throw server.error(
+        "NO_SCREEN_SHARE",
+        "Screen audio requires an active screen share",
+      );
+
     if (
       mediaKind !== "screen-audio" &&
       (state.spaceMute === true || state.spaceDeaf === true)
@@ -82,13 +102,11 @@ export default async function VoiceProduce(
 
   const producer = await peer.sendTransport.produce({
     kind,
-    rtpParameters,
+    rtpParameters: rtpParameters as unknown as RtpParameters,
     appData: {
       userId: peer.userId,
-      mediaKind:
-        envelope.data?.appData?.mediaKind ??
-        (kind === "video" ? "camera" : "audio"),
-      videoOrientation: envelope.data?.appData?.videoOrientation,
+      mediaKind: appData?.mediaKind ?? (kind === "video" ? "camera" : "audio"),
+      videoOrientation: appData?.videoOrientation,
     },
   });
 
@@ -114,6 +132,14 @@ export default async function VoiceProduce(
   };
 
   producer.observer.on("close", publishClosed);
+
+  if (producer.appData.mediaKind === "screen") {
+    producer.observer.on("close", () => {
+      for (const other of peer.producers.values()) {
+        if (other.appData.mediaKind === "screen-audio") other.close();
+      }
+    });
+  }
 
   Send(
     {

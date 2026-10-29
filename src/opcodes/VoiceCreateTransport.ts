@@ -1,10 +1,7 @@
 import type { Server } from "../Server";
-import type {
-    ClientMessageEnvelope,
-    TransportDirection,
-    VoicePeer,
-    VoiceRoom,
-} from "../types";
+import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
+import { parseData } from "../util/Validation";
+import { voiceCreateTransportData } from "@mutualzz/validators";
 import { Send } from "../util/Common";
 import config from "../Config";
 import { getCloudflareTurnCredentials } from "../util/CloudflareTurn";
@@ -22,13 +19,17 @@ function flattenIceServers(servers: RTCIceServer[]): RTCIceServer[] {
 }
 
 export default async function VoiceCreateTransport(
-    _server: Server,
+    server: Server,
     room: VoiceRoom,
     peer: VoicePeer,
     envelope: ClientMessageEnvelope,
 ) {
     const listenInfos = config.webRtcTransport.listenInfos;
-    const direction = envelope.data?.direction as TransportDirection;
+    const { direction } = parseData(
+        server,
+        voiceCreateTransportData,
+        envelope,
+    );
 
     const transport = await room.router.createWebRtcTransport({
         listenInfos,

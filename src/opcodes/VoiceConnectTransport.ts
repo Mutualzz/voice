@@ -2,6 +2,8 @@ import type { Server } from "../Server";
 import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
 import type { DtlsParameters } from "mediasoup/types";
 import { Send } from "../util/Common";
+import { parseData } from "../util/Validation";
+import { voiceConnectTransportData } from "@mutualzz/validators";
 
 export default async function VoiceConnectTransport(
     server: Server,
@@ -9,8 +11,9 @@ export default async function VoiceConnectTransport(
     peer: VoicePeer,
     envelope: ClientMessageEnvelope,
 ) {
-    const transportId = envelope.data.transportId.toString();
-    const dtlsParameters = envelope.data?.dtlsParameters as DtlsParameters;
+    const data = parseData(server, voiceConnectTransportData, envelope);
+    const transportId = data.transportId;
+    const dtlsParameters = data.dtlsParameters as unknown as DtlsParameters;
 
     const transport =
         peer.sendTransport?.id === transportId

@@ -4,6 +4,7 @@ import OPCodeHandlers, { type OPCodeHandler } from "../opcodes";
 import { logger } from "../Logger";
 import { Send } from "../util/Common";
 import { validatePeerSession } from "../middleware/validatePeerSession";
+import { voiceEnvelope } from "@mutualzz/validators";
 
 export default async function Message(
   server: Server,
@@ -21,14 +22,22 @@ export default async function Message(
     return;
   }
 
-  let envelope: ClientMessageEnvelope;
+  let raw: unknown;
 
   try {
-    envelope = JSON.parse(rawText);
+    raw = JSON.parse(rawText);
   } catch (err) {
     logger.error("invalid JSON", err);
     return;
   }
+
+  const parsed = voiceEnvelope.safeParse(raw);
+  if (!parsed.success) {
+    logger.warn("invalid envelope", { userId: peer.userId });
+    return;
+  }
+
+  const envelope = parsed.data as ClientMessageEnvelope;
 
   logger.debug("<-", {
     op: envelope.op,
@@ -37,7 +46,9 @@ export default async function Message(
     roomId: peer.roomId,
   });
 
-  const handler = OPCodeHandlers[envelope.op] as OPCodeHandler | null;
+  const handler = Object.hasOwn(OPCodeHandlers, envelope.op)
+    ? (OPCodeHandlers[envelope.op] as OPCodeHandler)
+    : null;
   if (!handler) {
     logger.error(`Unknown Opcode: ${envelope.op}`);
     Send(
@@ -62,13 +73,13 @@ export default async function Message(
       code: error?.code,
     });
 
+    // Only server.error() messages reach the client; anything else may carry internals
     Send(
       {
         ok: false,
-        error: {
-          code: error?.code ?? "INTERNAL",
-          message: error?.message ?? "Internal",
-        },
+        error: error?.expose
+          ? { code: error.code, message: error.message }
+          : { code: "INTERNAL", message: "Internal error" },
       },
       peer,
       envelope,

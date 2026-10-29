@@ -3,6 +3,8 @@ import type { ClientMessageEnvelope, VoicePeer, VoiceRoom } from "../types";
 import { Send } from "../util/Common";
 import { VoiceDispatchEvents } from "@mutualzz/types";
 import { redis } from "../util/Redis";
+import { parseData } from "../util/Validation";
+import { voiceProducerData } from "@mutualzz/validators";
 
 export default async function VoiceConsume(
     server: Server,
@@ -22,7 +24,7 @@ export default async function VoiceConsume(
     if (!currentToken || currentToken !== voiceToken)
         throw server.error("UNAUTHORIZED", "Voice token has been rotated");
 
-    const producerId = envelope.data?.producerId.toString();
+    const { producerId } = parseData(server, voiceProducerData, envelope);
 
     if (
         !room.router.canConsume({

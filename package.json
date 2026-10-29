@@ -19,6 +19,8 @@
   "dependencies": {
     "@mutualzz/logger": "workspace:*",
     "@mutualzz/server": "workspace:*",
+    "@mutualzz/validators": "workspace:*",
+    "zod": "^4.4.3",
     "ioredis": "^5.11.0",
     "mediasoup": "^3.20.0",
     "ws": "^8.21.0"
