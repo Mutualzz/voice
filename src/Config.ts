@@ -65,6 +65,27 @@ const listenInfo = {
   exposeInternalIp: !isProduction,
 } as TransportListenInfo;
 
+const webRtcServerBasePort = Number.isFinite(rtcMinPort) ? rtcMinPort : 40000;
+
+function webRtcServerListenInfos(port: number): TransportListenInfo[] {
+  return [
+    {
+      protocol: "udp",
+      ip: "0.0.0.0",
+      announcedAddress,
+      exposeInternalIp: !isProduction,
+      port,
+    },
+    {
+      protocol: "tcp",
+      ip: "0.0.0.0",
+      announcedAddress,
+      exposeInternalIp: !isProduction,
+      port,
+    },
+  ];
+}
+
 console.log(
   "[Config] announcedAddress:",
   listenInfo.announcedAddress,
@@ -156,6 +177,11 @@ export default {
     ] as TransportListenInfo[],
     maxIncomingBitrate: 1500000,
     initialAvailableOutgoingBitrate: 800000,
+  },
+
+  webRtcServer: {
+    basePort: webRtcServerBasePort,
+    listenInfos: webRtcServerListenInfos,
   },
 
   roomCloseDelayMs: 15_000,

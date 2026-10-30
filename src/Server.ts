@@ -26,6 +26,8 @@ export class Server {
   >();
   private readonly roomCreatePromises = new Map<string, Promise<VoiceRoom>>();
 
+  readonly webRtcServers: types.WebRtcServer[] = [];
+
   constructor() {
     this.server = http.createServer((req, res) => {
       if (req.url?.split("?")[0] === "/health") {
@@ -220,9 +222,17 @@ export class Server {
       });
 
       this.workers.push(worker);
+      const webRtcServer = await worker.createWebRtcServer({
+        listenInfos: config.webRtcServer.listenInfos(
+          config.webRtcServer.basePort + workerIndex,
+        ),
+      });
+      this.webRtcServers.push(webRtcServer);
     }
 
-    logger.debug(`Workers created: ${this.workers.length}`);
+    logger.debug(
+      `Workers created: ${this.workers.length}, WebRtcServers on ports ${config.webRtcServer.basePort}-${config.webRtcServer.basePort + this.workers.length - 1}`,
+    );
   }
 
   getNextWorker(): {
