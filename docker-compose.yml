@@ -5,8 +5,8 @@ services:
       dockerfile: apps/voice/Dockerfile
     env_file: .env
     ports:
-      - "40000-40100:40000-40100/udp"
-      - "40000-40100:40000-40100/tcp"
+      - "40000-40031:40000-40031/udp"
+      - "40000-40031:40000-40031/tcp"
     networks:
       - dokploy-network
     restart: unless-stopped
