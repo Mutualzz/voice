@@ -6,6 +6,7 @@ import type {
 import crypto from "crypto";
 import { Snowflake } from "./Snowflake";
 import { redis } from "./Redis";
+import { logger } from "../Logger.ts";
 
 export const VOICE_SESSION_TTL_SECONDS = 28_800;
 
@@ -43,7 +44,7 @@ export const withTimeout = <T>(
   });
 };
 
-export const base64UrlEncode =(input: Buffer | string) =>
+export const base64UrlEncode = (input: Buffer | string) =>
   Buffer.from(input)
     .toString("base64")
     .replace(/=/g, "")
@@ -172,16 +173,30 @@ export const verifyVoiceToken = async (token: string) => {
     return null;
   }
 
-  if (!signaturesMatch(expectedSignature, signature)) return null;
+  if (!signaturesMatch(expectedSignature, signature)) {
+    logger.debug("verifyVoiceToken: signature mismatch (SECRET differs?)");
+    return null;
+  }
 
   const raw = await redis.get(`voice:sessions:${token}`);
-  if (!raw) return null;
+  if (!raw) {
+    logger.debug(
+      "verifyVoiceToken: no session in Redis (wrong Redis, expired, or replaced)",
+    );
+    return null;
+  }
 
   const session = JSON.parse(raw) as VoiceSession | null;
   if (!session) return null;
 
   const currentToken = await redis.get(`voice:currentToken:${session.userId}`);
-  if (!currentToken || currentToken !== token) return null;
+  if (!currentToken || currentToken !== token) {
+    logger.debug("verifyVoiceToken: token is not the user's current token", {
+      userId: session.userId,
+      hasCurrentToken: Boolean(currentToken),
+    });
+    return null;
+  }
 
   return session;
 };
